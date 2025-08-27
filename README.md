@@ -187,4 +187,7 @@ Generar el compose a través del script:
 ./generar-compose.sh <nombre del compose> <cantidad de clientes>
 ```
 
-Si no se indica el nombre del archivo o la cantidad de clientes, se usan valores default.
+En el script, se definen valores default para el caso en que no se ingrese un nombre para el compose y/o cantidad de clientes a generar. 
+Luego, se usa un compose base que ya contiene la configuración del servidor. Decidí hacerlo de esta forma ya que me resultó más prolijo, al ser que el servidor era estático.
+Luego se definen todos los clientes indicados y por último, la red.
+Se imprime un mensaje de confirmación indicando el archivo docker compose generado y la cantidad de clientes.
