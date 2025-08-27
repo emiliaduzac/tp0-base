@@ -211,3 +211,30 @@ Antes, los archivos de configuración del cliente y servidor se copiaban en la i
 ```bash
 docker compose -f <nombre del compose> up
 ```
+
+### Ejercicio N°3:
+El script define ciertas variables:
+- SERVER → nombre del servicio server
+- PORT → puerto por el que escucha el server dentro del conteiner
+- MESSAGE → mensaje a enviar al server
+- NETWORK → red definida de docker a la que se conectan los containers
+
+Luego, levanta un container temporal que se conecta a la misma red que el server usando la mínima imagen de Linux posible, dado que solo necesitamos ejecutar `netcat`.
+Generamos un mensaje y lo enviamos usando netcat al server. Capturamos la respuesta (que debería ser la misma dado que es un echo server), y verificamos.
+
+1. Dar permisos al script
+```bash
+chmod +x validar-echo-server.sh
+```
+2. Levantar el server
+```bash
+make docker-compose-up
+```
+3. Probar el script
+```bash
+./validar-echo-server.sh
+```
+4. Cerrar los containers
+```bash
+make docker-compose-down
+```
