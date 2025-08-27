@@ -181,10 +181,26 @@ La corrección personal tendrá en cuenta la calidad del código entregado y cas
 
 ## Instrucciones para correr cada ejercicio
 ### Ejercicio N°1:
-Generar el compose a través del script:
+Para generar el compose a través del script:
 
+1. Dar permisos al script
+```bash
+chmod +x generar-compose.sh
+```
+
+2. Correr el script para generar el docker compose
 ```bash
 ./generar-compose.sh <nombre del compose> <cantidad de clientes>
+```
+
+3. Correr el docker compose
+```bash
+make docker-compose-up
+```
+
+4. Para detener la ejecución de los containers
+```bash
+make docker-compose-down
 ```
 
 En el script, se definen valores default para el caso en que no se ingrese un nombre para el compose y/o cantidad de clientes a generar. 
