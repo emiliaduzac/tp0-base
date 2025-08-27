@@ -27,6 +27,8 @@ cat <<EOF >> "$OUTFILE"
       - CLI_LOG_LEVEL=DEBUG
     networks:
       - testing_net
+    volumes:
+      - ./client/config.yaml:/config.yaml
     depends_on:
       - server
 

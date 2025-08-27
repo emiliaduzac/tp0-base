@@ -188,3 +188,6 @@ Generar el compose a través del script:
 ```
 
 Si no se indica el nombre del archivo o la cantidad de clientes, se usan valores default.
+
+### Ejercicio N°2: 
+Antes, los archivos de configuración del cliente y servidor se copiaban en la imagen de Docker de cada uno. Eso implicaba que ante un mínimo cambio en la configuración, se requiera volver a crear la imagen. Para evitar eso y que la imagen contenga lo mínimo necesario, se agregó el uso de volúmenes, que sirven para compartir archivos o carpetas entre la máquina host y un container.
