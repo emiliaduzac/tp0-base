@@ -205,7 +205,9 @@ En el script, se definen valores default para el caso en que no se ingrese un no
 ### Ejercicio N°2: 
 Antes, los archivos de configuración del cliente y servidor se copiaban en la imagen de Docker de cada uno. Eso implicaba que ante un mínimo cambio en la configuración, se requiera volver a crear la imagen. Para evitar eso y que la imagen contenga lo mínimo necesario, se agregó el uso de volúmenes, que sirven para compartir archivos o carpetas entre la máquina host y un container.
 
-Para probar los cambios, ejecutar sin hacer nuevamente el `build`
+1. Generar el compose y correr siguiendo los pasos del ejercicio 1
+
+2. Modificar el config y probar los cambios ejecutando sin hacer nuevamente el `build`
 ```bash
 docker compose -f <nombre del compose> up
 ```
