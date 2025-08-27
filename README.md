@@ -181,13 +181,31 @@ La corrección personal tendrá en cuenta la calidad del código entregado y cas
 
 ## Instrucciones para correr cada ejercicio
 ### Ejercicio N°1:
-Generar el compose a través del script:
+Para generar el compose a través del script:
 
+1. Dar permisos al script
+```bash
+chmod +x generar-compose.sh
+```
+2. Correr el script para generar el docker compose
 ```bash
 ./generar-compose.sh <nombre del compose> <cantidad de clientes>
+````
+3. Correr el docker compose
+```bash
+make docker-compose-up
+````
+4. Para detener la ejecución de los containers
+```bash
+make docker-compose-down
 ```
 
-Si no se indica el nombre del archivo o la cantidad de clientes, se usan valores default.
+En el script, se definen valores default para el caso en que no se ingrese un nombre para el compose y/o cantidad de clientes a generar. Luego, se usa un compose base que ya contiene la configuración del servidor. Decidí hacerlo de esta forma ya que me resultó más prolijo, al ser que el servidor era estático. Luego se definen todos los clientes indicados y por último, la red. Se imprime un mensaje de confirmación indicando el archivo docker compose generado y la cantidad de clientes.
 
 ### Ejercicio N°2: 
 Antes, los archivos de configuración del cliente y servidor se copiaban en la imagen de Docker de cada uno. Eso implicaba que ante un mínimo cambio en la configuración, se requiera volver a crear la imagen. Para evitar eso y que la imagen contenga lo mínimo necesario, se agregó el uso de volúmenes, que sirven para compartir archivos o carpetas entre la máquina host y un container.
+
+Para probar los cambios, ejecutar sin hacer nuevamente el `build`
+```bash
+docker compose -f <nombre del compose> up
+```
