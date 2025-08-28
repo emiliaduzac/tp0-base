@@ -238,3 +238,12 @@ make docker-compose-up
 ```bash
 make docker-compose-down
 ```
+
+### Ejercicio N°4:
+Tanto en el cliente como en el servidor se manejan las señales SIGTERM y SIGINT para permitir un graceful shutdown.
+
+En el caso del servidor se registra un handler (`signal.signal(<señal a manejar>, <handler>)`) que se ejecuta al recibir una de las señales mencionadas. Ahí se marca al servidor para dejar de recibir conexiones, se cierra el socket correspondiente y termina el programa. 
+
+En el caso del cliente, se genera un contexto (`ctx, stop := signal.NotifyContext(context.Background(), <señal a manejar>)`) que se cancela si detecta una de las señales. Cuando el programa detecta que se canceló el contexto (`<-ctx.Done()`), se cierran los recursos y el programa finaliza.
+
+En ambos casos se garantiza un cierre ordenado, limpiando todos los recursos y registrando los logs correspondientes en cada paso.
