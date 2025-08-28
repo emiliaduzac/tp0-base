@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 from configparser import ConfigParser
+import signal
 from common.server import Server
 import logging
 import os
@@ -27,7 +28,7 @@ def initialize_config():
         config_params["listen_backlog"] = int(os.getenv('SERVER_LISTEN_BACKLOG', config["DEFAULT"]["SERVER_LISTEN_BACKLOG"]))
         config_params["logging_level"] = os.getenv('LOGGING_LEVEL', config["DEFAULT"]["LOGGING_LEVEL"])
     except KeyError as e:
-        raise KeyError("Key was not found. Error: {} .Aborting server".format(e))
+        raise KeyError("Key was not found. Error: {}. Aborting server".format(e))
     except ValueError as e:
         raise ValueError("Key could not be parsed. Error: {}. Aborting server".format(e))
 
@@ -62,8 +63,9 @@ def initialize_log(logging_level):
         format='%(asctime)s %(levelname)-8s %(message)s',
         level=logging_level,
         datefmt='%Y-%m-%d %H:%M:%S',
-    )
+    ) 
 
 
 if __name__ == "__main__":
     main()
+    print("recibi close ")
