@@ -69,4 +69,3 @@ def initialize_log(logging_level):
 
 if __name__ == "__main__":
     main()
-    print("recibi close ")

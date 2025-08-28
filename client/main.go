@@ -112,4 +112,5 @@ func main() {
 
 	client := common.NewClient(clientConfig)
 	client.StartClientLoop()
+	os.Exit(0)
 }
