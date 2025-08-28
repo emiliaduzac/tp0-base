@@ -68,7 +68,6 @@ func (c *Client) StartClientLoop() {
 		// Check if a termination signal was received
 		select {
 		case <-ctx.Done():
-			log.Infof("action: loop_finished | result: interrupted | client_id: %v", c.config.ID)
 			log.Debugf("action: shutdown | result: in_progress | signal: %v", ctx.Err())
 			c.close()
 			log.Debugf("action: shutdown | result: success | signal: %v", ctx.Err())
