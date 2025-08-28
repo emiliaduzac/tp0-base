@@ -69,9 +69,9 @@ func (c *Client) StartClientLoop() {
 		select {
 		case <-ctx.Done():
 			log.Infof("action: loop_finished | result: interrupted | client_id: %v", c.config.ID)
-			log.Debugf("action: shutdown | result: in_progress | signal: ", ctx.Err())
+			log.Debugf("action: shutdown | result: in_progress | signal: %v", ctx.Err())
 			c.close()
-			log.Debugf("action: shutdown | result: success | signal: ", ctx.Err())
+			log.Debugf("action: shutdown | result: success | signal: %v", ctx.Err())
 			return
 		default:
 		}
@@ -110,11 +110,12 @@ func (c *Client) StartClientLoop() {
 
 		// Wait a time between sending one message and the next one
 		time.Sleep(c.config.LoopPeriod)
-
 	}
 	log.Infof("action: loop_finished | result: success | client_id: %v", c.config.ID)
 }
 
 func (c *Client) close() {
-	c.conn.Close()
+	if c.conn != nil {
+		c.conn.Close()
+	}
 }
