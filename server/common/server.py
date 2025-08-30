@@ -44,11 +44,11 @@ class Server:
         client socket will also be closed
         """
         try:
-            msg = read_socket(client_sock)
+            bet_fields = self.read_bet_from_socket(client_sock)
+            msg = ','.join(bet_fields)
             addr = client_sock.getpeername()
             logging.info(f'action: apuesta_recibida | result: success | ip: {addr[0]} | msg: {msg}')
             
-            bet_fields = msg.split(',')
             bet = Bet(bet_fields[0], bet_fields[1], bet_fields[2], bet_fields[3], bet_fields[4], bet_fields[5])
             store_bets([bet])
             logging.info(f'action: apuesta_almacenada | result: success | dni: {bet_fields[3]} | numero: {bet_fields[5]}')
@@ -84,25 +84,40 @@ class Server:
         self.close()
         logging.debug(f"action: shutdown | result: success | signal: {signum}")
 
+    def read_n_bytes(self, client_sock, n):
+        data = bytearray()
+        while len(data) < n:
+            packet = client_sock.recv(n - len(data))
+            if not packet:
+                raise OSError("Socket closed while reading data")
+            data.extend(packet)
+        return data
 
-def read_socket(socket):
-    """
-    Read data from a socket until a newline character is found
-    """
-    b = b''
-    while not b.endswith(b'\n'):
-        chunk = socket.recv(1024)
-        if not chunk:
-            raise OSError("Client disconnected")
-        b += chunk
-    return b.decode('utf-8').rstrip('\n')
+    def read_bet_from_socket(self, client_sock):
+        headers = []
+        for i in range(6):
+            header = client_sock.recv(1)
+            if not header:
+                raise OSError("Socket closed while reading header")
+            headers.append(header)
+        
+        bet_fields = []
+        for i in range(6):
+            field_len = int.from_bytes(headers[i], byteorder='big')
+            try:
+                field = self.read_n_bytes(client_sock, field_len)
+            except OSError:
+                raise OSError("Socket closed while reading field")
+            bet_fields.append(field.decode('utf-8'))
 
-def send_socket(socket, msg):
+        return bet_fields
+
+def send_socket(client_sock, msg):
     """
     Send data to a socket
     """
     total_sent = 0
     msg_as_bytes = f'{msg}\n'.encode('utf-8')
     while total_sent < len(msg_as_bytes):
-        sent = socket.send(msg_as_bytes[total_sent:])
+        sent = client_sock.send(msg_as_bytes[total_sent:])
         total_sent += sent

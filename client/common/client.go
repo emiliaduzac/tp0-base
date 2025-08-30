@@ -116,10 +116,10 @@ func (c *Client) close() {
 	}
 }
 
-func sendMessage(cliConn net.Conn, betMsg string) error {
+func sendMessage(cliConn net.Conn, betMsg []byte) error {
 	totalSent := 0
 	for totalSent < len(betMsg) {
-		sent_bytes, err := cliConn.Write([]byte(betMsg[totalSent:]))
+		sent_bytes, err := cliConn.Write(betMsg[totalSent:])
 		if err != nil {
 			return err
 		}
