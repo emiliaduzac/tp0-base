@@ -3,7 +3,6 @@ package common
 import (
 	"bufio"
 	"context"
-	"fmt"
 	"net"
 	"os/signal"
 	"syscall"
@@ -62,59 +61,70 @@ func (c *Client) StartClientLoop() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer stop()
 
-	// There is an autoincremental msgID to identify every message sent
-	// Messages if the message amount threshold has not been surpassed
-	for msgID := 1; msgID <= c.config.LoopAmount; msgID++ {
-		// Check if a termination signal was received
-		select {
-		case <-ctx.Done():
-			log.Debugf("action: shutdown | result: in_progress | signal: %v", ctx.Err())
-			c.close()
-			log.Debugf("action: shutdown | result: success | signal: %v", ctx.Err())
-			return
-		default:
-		}
-
-		// Create the connection the server in every loop iteration. Send an
-		r := c.createClientSocket()
-		if r != nil {
-			log.Errorf("action: create_socket | result: fail | client_id: %v | error: %v",
-				c.config.ID,
-				r)
-			return
-		}
-
-		// TODO: Modify the send to avoid short-write
-		fmt.Fprintf(
-			c.conn,
-			"[CLIENT %v] Message N°%v\n",
-			c.config.ID,
-			msgID,
-		)
-		msg, err := bufio.NewReader(c.conn).ReadString('\n')
-		c.conn.Close()
-
-		if err != nil {
-			log.Errorf("action: receive_message | result: fail | client_id: %v | error: %v",
-				c.config.ID,
-				err,
-			)
-			return
-		}
-
-		log.Infof("action: receive_message | result: success | client_id: %v | msg: %v",
-			c.config.ID,
-			msg,
-		)
-
-		// Wait a time between sending one message and the next one
-		time.Sleep(c.config.LoopPeriod)
+	select {
+	case <-ctx.Done():
+		log.Debugf("action: shutdown | result: in_progress | signal: %v", ctx.Err())
+		c.close()
+		log.Debugf("action: shutdown | result: success | signal: %v", ctx.Err())
+		return
+	default:
 	}
-	log.Infof("action: loop_finished | result: success | client_id: %v", c.config.ID)
+
+	// Get the serialized bet message to send, using the env variables
+	bet := getBet(c.config.ID)
+	betMsg := serializeBet(bet)
+
+	// Create the connection the server
+	r := c.createClientSocket()
+	if r != nil {
+		log.Errorf("action: create_socket | result: fail | client_id: %v | error: %v",
+			c.config.ID,
+			r)
+		return
+	}
+
+	// Send bet to the server
+	sendErr := sendMessage(c.conn, betMsg)
+	if sendErr != nil {
+		log.Errorf("action: send_message | result: fail | client_id: %v | error: %v",
+			c.config.ID,
+			sendErr,
+		)
+		return
+	}
+
+	// Wait for server response to ensure that the message was received
+	_, readErr := bufio.NewReader(c.conn).ReadString('\n')
+	c.conn.Close()
+	if readErr != nil {
+		log.Errorf("action: receive_message | result: fail | client_id: %v | error: %v",
+			c.config.ID,
+			readErr,
+		)
+		return
+	}
+
+	log.Infof("action: apuesta_enviada | result: success | dni: %v | numero: %v",
+		bet.Document,
+		bet.Number,
+	)
 }
 
 func (c *Client) close() {
 	if c.conn != nil {
 		c.conn.Close()
 	}
+}
+
+func sendMessage(cliConn net.Conn, betMsg string) error {
+	totalSent := 0
+	for totalSent < len(betMsg) {
+		sent_bytes, err := cliConn.Write([]byte(betMsg[totalSent:]))
+		if err != nil {
+			return err
+		}
+		totalSent += sent_bytes
+	}
+
+	return nil
 }

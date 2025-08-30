@@ -22,8 +22,7 @@ cat <<EOF >> "$OUTFILE"
     container_name: client$i
     image: client:latest
     entrypoint: /client
-    environment:
-      - CLI_ID=$i
+    env_file: ./env_variables/client${i}.env
     networks:
       - testing_net
     volumes:
