@@ -94,11 +94,9 @@ func (c *Client) StartClientLoop() {
 	}
 
 	// Wait for server response to ensure that the message was received
-	buffer := make([]byte, 2)
-	read, readErr := bufio.NewReader(c.conn).Read(buffer)
-
+	msg, readErr := bufio.NewReader(c.conn).ReadByte()
 	c.conn.Close()
-	if readErr != nil || read != 2 || string(buffer) != "OK" {
+	if readErr != nil || msg != byte(1) {
 		log.Errorf("action: receive_message | result: fail | client_id: %v | error: %v",
 			c.config.ID,
 			readErr,

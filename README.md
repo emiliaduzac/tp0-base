@@ -247,3 +247,41 @@ En el caso del servidor se registra un handler (`signal.signal(<señal a manejar
 En el caso del cliente, se genera un contexto (`ctx, stop := signal.NotifyContext(context.Background(), <señal a manejar>)`) que se cancela si detecta una de las señales. Cuando el programa detecta que se canceló el contexto (`<-ctx.Done()`), se cierran los recursos y el programa finaliza.
 
 En ambos casos se garantiza un cierre ordenado, limpiando todos los recursos y registrando los logs correspondientes en cada paso.
+
+### Ejercicio N°5:
+> Variables de entorno
+
+En este ejercicio se asumen 5 agencias. Cada cliente debe poder enviar su apuesta al servidor utilizando variables de entorno. Para ello, al levantar el contenedor de cada cliente, se lee un archivo `cliente{i}.env` que define todas las variables de entorno, único para cada uno de los 5 clientes.
+
+> Protocolo de comunicación
+
+El objetivo de este ejercicio es que el cliente envíe una apuesta al servidor, quien la almacena y le confirma la recepción del mensaje. Para ello, utilicé sockets TCP como protocolo de capa de transporte.
+
+#### Cliente
+El cliente genera una estructura de tipo `BetPacket` para representar el mensaje que indicará la apuesta realizada. En dicha estructura, se incluyen 6 campos para indicar la longitud (en bytes) de cada un de los siguientes 6 campos que representan una apuesta. Seguido a eso, se encuentran los 6 campos mencionados.
+
+```go
+type BetPacket struct {
+	// Lengths
+	AgencyLen    byte
+	FirstNameLen byte
+	LastNameLen  byte
+	DocumentLen  byte
+	BirthdateLen byte
+	NumberLen    byte
+	// Fields
+	Agency    int
+	FirstName string
+	LastName  string
+	Document  string
+	Birthdate string
+	Number    int
+}
+```
+
+Para enviarlos a través del socket TCP, se codifican a bytes siguiendo el orden indicado por la estructura `BetPacket`. De esta forma, el servidor sabe como decodifcarlo para leer correctamente la apuesta.
+
+#### Servidor
+El servidor envía un mensaje de confirmación indicando la correcta recepción. Dado que para el cliente solo es necesario recibir un mensaje para tener confirmación, basta con que el servidor envíe un byte. 
+
+> Short reads y Short writes

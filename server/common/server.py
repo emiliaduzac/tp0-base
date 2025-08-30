@@ -53,9 +53,9 @@ class Server:
             store_bets([bet])
             logging.info(f'action: apuesta_almacenada | result: success | dni: {bet_fields[3]} | numero: {bet_fields[5]}')
 
-            confirmation_msg = f"OK\n"
-            send_socket(client_sock, confirmation_msg)
-            logging.info(f'action: send_message | result: success | ip: {addr[0]} | msg: {msg}')
+            # Send ack to client. 0 means received correctly.
+            send_socket(client_sock, 0)
+            logging.info(f'action: send_message | result: success | ip: {addr[0]} | msg: {0}')
 
         except OSError as e:
             logging.error(f"action: receive_message | result: fail | error: {e}")
@@ -119,7 +119,6 @@ def send_socket(client_sock, msg):
     Send data to a socket
     """
     total_sent = 0
-    msg_as_bytes = f'{msg}\n'.encode('utf-8')
-    while total_sent < len(msg_as_bytes):
-        sent = client_sock.send(msg_as_bytes[total_sent:])
+    while total_sent < len(msg):
+        sent = client_sock.send(msg[total_sent:])
         total_sent += sent
