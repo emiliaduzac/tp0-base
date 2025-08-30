@@ -71,7 +71,7 @@ func (c *Client) StartClientLoop() {
 	}
 
 	// Get the serialized bet message to send, using the env variables
-	bet := getBet(c.config.ID)
+	bet := getBetPacket(c.config.ID)
 	betMsg := serializeBet(bet)
 
 	// Create the connection the server
@@ -86,7 +86,7 @@ func (c *Client) StartClientLoop() {
 	// Send bet to the server
 	sendErr := sendMessage(c.conn, betMsg)
 	if sendErr != nil {
-		log.Errorf("action: send_message | result: fail | client_id: %v | error: %v",
+		log.Errorf("action: apuesta_enviada | result: fail | dni: %v | numero: %v",
 			c.config.ID,
 			sendErr,
 		)
@@ -94,9 +94,11 @@ func (c *Client) StartClientLoop() {
 	}
 
 	// Wait for server response to ensure that the message was received
-	_, readErr := bufio.NewReader(c.conn).ReadString('\n')
+	buffer := make([]byte, 2)
+	read, readErr := bufio.NewReader(c.conn).Read(buffer)
+
 	c.conn.Close()
-	if readErr != nil {
+	if readErr != nil || read != 2 || string(buffer) != "OK" {
 		log.Errorf("action: receive_message | result: fail | client_id: %v | error: %v",
 			c.config.ID,
 			readErr,
@@ -110,16 +112,18 @@ func (c *Client) StartClientLoop() {
 	)
 }
 
+// closes the client's connection if it's open
 func (c *Client) close() {
 	if c.conn != nil {
 		c.conn.Close()
 	}
 }
 
-func sendMessage(cliConn net.Conn, betMsg []byte) error {
+// sends a message to the server, ensuring that all bytes are sent
+func sendMessage(conn net.Conn, betMsg []byte) error {
 	totalSent := 0
 	for totalSent < len(betMsg) {
-		sent_bytes, err := cliConn.Write(betMsg[totalSent:])
+		sent_bytes, err := conn.Write(betMsg[totalSent:])
 		if err != nil {
 			return err
 		}

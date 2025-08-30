@@ -25,8 +25,8 @@ type BetPacket struct {
 	Number    string
 }
 
-// getBet reads the bet information from environment variables and returns a Bet struct
-func getBet(cliId string) BetPacket {
+// getBetPacket reads the bet information from environment variables and returns a Bet struct
+func getBetPacket(cliId string) BetPacket {
 	v := viper.New()
 	v.AutomaticEnv()
 	v.BindEnv("nombre", "NOMBRE")

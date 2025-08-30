@@ -53,11 +53,13 @@ class Server:
             store_bets([bet])
             logging.info(f'action: apuesta_almacenada | result: success | dni: {bet_fields[3]} | numero: {bet_fields[5]}')
 
-            send_socket(client_sock, msg)
+            confirmation_msg = f"OK\n"
+            send_socket(client_sock, confirmation_msg)
             logging.info(f'action: send_message | result: success | ip: {addr[0]} | msg: {msg}')
 
         except OSError as e:
             logging.error(f"action: receive_message | result: fail | error: {e}")
+
         finally:
             client_sock.close()
 
@@ -84,15 +86,6 @@ class Server:
         self.close()
         logging.debug(f"action: shutdown | result: success | signal: {signum}")
 
-    def read_n_bytes(self, client_sock, n):
-        data = bytearray()
-        while len(data) < n:
-            packet = client_sock.recv(n - len(data))
-            if not packet:
-                raise OSError("Socket closed while reading data")
-            data.extend(packet)
-        return data
-
     def read_bet_from_socket(self, client_sock):
         headers = []
         for i in range(6):
@@ -105,12 +98,21 @@ class Server:
         for i in range(6):
             field_len = int.from_bytes(headers[i], byteorder='big')
             try:
-                field = self.read_n_bytes(client_sock, field_len)
+                field = read_n_bytes(client_sock, field_len)
             except OSError:
                 raise OSError("Socket closed while reading field")
             bet_fields.append(field.decode('utf-8'))
 
         return bet_fields
+    
+def read_n_bytes(client_sock, n):
+    data = bytearray()
+    while len(data) < n:
+        packet = client_sock.recv(n - len(data))
+        if not packet:
+            raise OSError("Socket closed while reading data")
+        data.extend(packet)
+    return data
 
 def send_socket(client_sock, msg):
     """
