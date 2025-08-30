@@ -44,17 +44,17 @@ class Server:
         client socket will also be closed
         """
         try:
-            # TODO: Modify the receive to avoid short-reads
-            msg = client_sock.recv(1024).rstrip().decode('utf-8')
+            msg = read_socket(client_sock)
             addr = client_sock.getpeername()
-            logging.info(f'action: apuesta_recibida | result: success | msg: {msg}')
+            logging.info(f'action: apuesta_recibida | result: success | ip: {addr[0]} | msg: {msg}')
             
-            bet_list = msg.split(',')
-            bet = Bet(bet_list[0], bet_list[1], bet_list[2], bet_list[3], bet_list[4], bet_list[5])
+            bet_fields = msg.split(',')
+            bet = Bet(bet_fields[0], bet_fields[1], bet_fields[2], bet_fields[3], bet_fields[4], bet_fields[5])
             store_bets([bet])
-            
-            # TODO: Modify the send to avoid short-writes
-            client_sock.send("{}\n".format(msg).encode('utf-8'))
+            logging.info(f'action: apuesta_almacenada | result: success | dni: {bet_fields[3]} | numero: {bet_fields[5]}')
+
+            send_socket(client_sock, msg)
+            logging.info(f'action: send_message | result: success | ip: {addr[0]} | msg: {msg}')
 
         except OSError as e:
             logging.error(f"action: receive_message | result: fail | error: {e}")
@@ -83,3 +83,26 @@ class Server:
         self._running = False
         self.close()
         logging.debug(f"action: shutdown | result: success | signal: {signum}")
+
+
+def read_socket(socket):
+    """
+    Read data from a socket until a newline character is found
+    """
+    b = b''
+    while not b.endswith(b'\n'):
+        chunk = socket.recv(1024)
+        if not chunk:
+            raise OSError("Client disconnected")
+        b += chunk
+    return b.decode('utf-8').rstrip('\n')
+
+def send_socket(socket, msg):
+    """
+    Send data to a socket
+    """
+    total_sent = 0
+    msg_as_bytes = f'{msg}\n'.encode('utf-8')
+    while total_sent < len(msg_as_bytes):
+        sent = socket.send(msg_as_bytes[total_sent:])
+        total_sent += sent
