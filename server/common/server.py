@@ -2,7 +2,8 @@ import signal
 import socket
 import logging
 
-from common.utils import store_bets, Bet
+from common.utils import store_bets
+from server.common.bet_protocol import read_bet_from_socket, ProtocolError, send_ack, send_nack
 
 class Server:
     def __init__(self, port, listen_backlog):
@@ -44,21 +45,23 @@ class Server:
         client socket will also be closed
         """
         try:
-            bet_fields = self.read_bet_from_socket(client_sock)
-            msg = ','.join(bet_fields)
+            bet = read_bet_from_socket(client_sock)
             addr = client_sock.getpeername()
-            logging.info(f'action: apuesta_recibida | result: success | ip: {addr[0]} | msg: {msg}')
+            logging.info(f'action: apuesta_recibida | result: success | ip: {addr[0]} | msg: {bet}')
             
-            bet = Bet(bet_fields[0], bet_fields[1], bet_fields[2], bet_fields[3], bet_fields[4], bet_fields[5])
             store_bets([bet])
-            logging.info(f'action: apuesta_almacenada | result: success | dni: {bet_fields[3]} | numero: {bet_fields[5]}')
+            logging.info(f'action: apuesta_almacenada | result: success | dni: {bet.document} | numero: {bet.number}')
 
-            # Send ack to client. 0 means received correctly.
-            send_socket(client_sock, b'\x00')
+            # Send ack to client.
+            send_ack(client_sock)
             logging.info(f'action: send_message | result: success | ip: {addr[0]} | msg: {0}')
 
         except OSError as e:
             logging.error(f"action: receive_message | result: fail | error: {e}")
+
+        except ProtocolError as e:
+            send_nack(client_sock)
+            logging.error(f"action: receive_bet_message | result: fail | error: {e}")
 
         finally:
             client_sock.close()
@@ -85,40 +88,4 @@ class Server:
         self._running = False
         self.close()
         logging.debug(f"action: shutdown | result: success | signal: {signum}")
-
-    def read_bet_from_socket(self, client_sock):
-        headers = []
-        for i in range(6):
-            header = client_sock.recv(1)
-            if not header:
-                raise OSError("Socket closed while reading header")
-            headers.append(header)
-        
-        bet_fields = []
-        for i in range(6):
-            field_len = int.from_bytes(headers[i], byteorder='big')
-            try:
-                field = read_n_bytes(client_sock, field_len)
-            except OSError:
-                raise OSError("Socket closed while reading field")
-            bet_fields.append(field.decode('utf-8'))
-
-        return bet_fields
     
-def read_n_bytes(client_sock, n):
-    data = bytearray()
-    while len(data) < n:
-        packet = client_sock.recv(n - len(data))
-        if not packet:
-            raise OSError("Socket closed while reading data")
-        data.extend(packet)
-    return data
-
-def send_socket(client_sock, msg):
-    """
-    Send data to a socket
-    """
-    total_sent = 0
-    while total_sent < len(msg):
-        sent = client_sock.send(msg[total_sent:])
-        total_sent += sent

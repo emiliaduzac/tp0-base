@@ -1,7 +1,6 @@
 package common
 
 import (
-	"bufio"
 	"context"
 	"net"
 	"os/signal"
@@ -64,15 +63,15 @@ func (c *Client) StartClientLoop() {
 	select {
 	case <-ctx.Done():
 		log.Debugf("action: shutdown | result: in_progress | signal: %v", ctx.Err())
-		c.close()
+		c.closeSocket()
 		log.Debugf("action: shutdown | result: success | signal: %v", ctx.Err())
 		return
 	default:
 	}
 
-	// Get the serialized bet message to send, using the env variables
-	bet := getBetPacket(c.config.ID)
-	betMsg := serializeBet(bet)
+	// Get the serialized bet_pck message to send, using the env variables
+	bet_pck := getBetPacket(c.config.ID)
+	betMsg := serializeBet(bet_pck)
 
 	// Create the connection the server
 	r := c.createClientSocket()
@@ -94,7 +93,7 @@ func (c *Client) StartClientLoop() {
 	}
 
 	// Wait for server response to ensure that the message was received
-	msg, readErr := bufio.NewReader(c.conn).ReadByte()
+	msg, readErr := getAck(c.conn)
 	c.conn.Close()
 	if readErr != nil || msg != 0 {
 		log.Errorf("action: receive_message | result: fail | client_id: %v | error: %v",
@@ -105,28 +104,7 @@ func (c *Client) StartClientLoop() {
 	}
 
 	log.Infof("action: apuesta_enviada | result: success | dni: %v | numero: %v",
-		bet.Document,
-		bet.Number,
+		bet_pck.Document,
+		bet_pck.Number,
 	)
-}
-
-// closes the client's connection if it's open
-func (c *Client) close() {
-	if c.conn != nil {
-		c.conn.Close()
-	}
-}
-
-// sends a message to the server, ensuring that all bytes are sent
-func sendMessage(conn net.Conn, betMsg []byte) error {
-	totalSent := 0
-	for totalSent < len(betMsg) {
-		sent_bytes, err := conn.Write(betMsg[totalSent:])
-		if err != nil {
-			return err
-		}
-		totalSent += sent_bytes
-	}
-
-	return nil
 }

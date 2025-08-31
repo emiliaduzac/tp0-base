@@ -1,6 +1,9 @@
 package common
 
 import (
+	"bufio"
+	"net"
+
 	"github.com/spf13/viper"
 )
 
@@ -79,4 +82,8 @@ func serializeBet(betPacket BetPacket) []byte {
 	copy(betMsg[off:], betPacket.Number)
 
 	return betMsg
+}
+
+func getAck(conn net.Conn) (byte, error) {
+	return bufio.NewReader(conn).ReadByte()
 }

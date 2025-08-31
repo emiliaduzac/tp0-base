@@ -256,32 +256,17 @@ En este ejercicio se asumen 5 agencias. Cada cliente debe poder enviar su apuest
 > Protocolo de comunicación
 
 El objetivo de este ejercicio es que el cliente envíe una apuesta al servidor, quien la almacena y le confirma la recepción del mensaje. Para ello, utilicé sockets TCP como protocolo de capa de transporte.
+El protocolo de comunicación es de esquema mixto: se incluyen 6 bytes de tamaño fijo y luego el resto de campos utilizan las longitudes definidas en los primeros 6 bytes como delimitadores.
 
 #### Cliente
 El cliente genera una estructura de tipo `BetPacket` para representar el mensaje que indicará la apuesta realizada. En dicha estructura, se incluyen 6 campos para indicar la longitud (en bytes) de cada un de los siguientes 6 campos que representan una apuesta. Seguido a eso, se encuentran los 6 campos mencionados.
 
-```go
-type BetPacket struct {
-	// Lengths
-	AgencyLen    byte
-	FirstNameLen byte
-	LastNameLen  byte
-	DocumentLen  byte
-	BirthdateLen byte
-	NumberLen    byte
-	// Fields
-	Agency    int
-	FirstName string
-	LastName  string
-	Document  string
-	Birthdate string
-	Number    int
-}
-```
-
 Para enviarlos a través del socket TCP, se codifican a bytes siguiendo el orden indicado por la estructura `BetPacket`. De esta forma, el servidor sabe como decodifcarlo para leer correctamente la apuesta.
+
+![Mensaje BetPacket](doc_images/bet_message.png)
 
 #### Servidor
 El servidor envía un mensaje de confirmación indicando la correcta recepción. Dado que para el cliente solo es necesario recibir un mensaje para tener confirmación, basta con que el servidor envíe un byte. 
+Un 0 indica que el mensaje fue recibido y procesado correctamente, un 1 indica un error.
 
-> Short reads y Short writes
+![Mensaje ACK](doc_images/ack_message.png)
