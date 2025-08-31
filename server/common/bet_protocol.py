@@ -12,7 +12,7 @@ def read_bet_from_socket(client_sock):
         
         bet_fields = []
         for i in range(6):
-            field_len = int.from_bytes(fields_length[i], byteorder='big')
+            field_len = fields_length[i]
             try:
                 field = read_n_bytes(client_sock, field_len)
             except OSError:
