@@ -54,7 +54,7 @@ class Server:
             logging.info(f'action: apuesta_almacenada | result: success | dni: {bet_fields[3]} | numero: {bet_fields[5]}')
 
             # Send ack to client. 0 means received correctly.
-            send_socket(client_sock, 0)
+            send_socket(client_sock, b'\x00')
             logging.info(f'action: send_message | result: success | ip: {addr[0]} | msg: {0}')
 
         except OSError as e:
