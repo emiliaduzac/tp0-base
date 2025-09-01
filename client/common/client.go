@@ -82,30 +82,37 @@ func (c *Client) StartClientLoop() {
 	defer c.closeSocket()
 
 	// Send all bets from file
-	c.sendBets()
-	log.Infof("action: send_bets | result: success | client_id: %v", c.config.ID)
+	log.Info("llamo a send bet")
+	err := c.sendBets()
+	if err != nil {
+		log.Infof("action: send_bets | result: success | client_id: %v", c.config.ID)
+	}
 }
 
-func (c *Client) sendBets() {
+func (c *Client) sendBets() error {
 	file, err := getBetFile(c.config.ID)
 
 	if err != nil {
 		log.Errorf("action: open_file | result: fail | client_id: %v | error: %v",
 			c.config.ID,
 			err)
-		return
+		return err
 	}
 	defer file.Close()
 
 	for {
+		log.Info("Llamo a getBetBatchToSend")
 		batch, err := getBetBatchToSend(file, c.config)
-		// no hay mas nada por enviar
-		if len(batch) == 0 && err != io.EOF {
-			continue
-		}
 
 		// Send bet to the server
-		c.trySend(batch)
+		sendErr := sendMessage(c.conn, batch)
+		if sendErr != nil {
+			log.Errorf("action: send_batch | result: fail | client_id: %v | error: %v",
+				c.config.ID,
+				sendErr,
+			)
+			break
+		}
 
 		// Wait for server response to ensure that the message was received and keep sending
 		msg, readErr := getResponse(c.conn)
@@ -114,7 +121,7 @@ func (c *Client) sendBets() {
 				c.config.ID,
 				readErr,
 			)
-			return
+			return readErr
 		}
 
 		log.Infof("action: send_batch | result: success | client_id: %v",
@@ -122,18 +129,8 @@ func (c *Client) sendBets() {
 		)
 
 		if err == io.EOF {
-			return
+			return nil
 		}
 	}
-}
-
-func (c *Client) trySend(batch []byte) {
-	sendErr := sendMessage(c.conn, batch)
-	if sendErr != nil {
-		log.Errorf("action: send_batch | result: fail | client_id: %v | error: %v",
-			c.config.ID,
-			sendErr,
-		)
-		return
-	}
+	return nil
 }

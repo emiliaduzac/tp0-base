@@ -21,59 +21,58 @@ func (e *ProtocolError) Error() string {
 }
 
 func getBetBatchToSend(file *os.File, config ClientConfig) ([]byte, error) {
-	max_size := config.MaxSizeAmount - (IS_LAST_SIZE + BATCH_HEADER_SIZE) // 2 byte for total length and 1 byte for is_last
-	batch := make([]byte, 0, max_size)
+	max_payload_size := config.MaxSizeAmount - (IS_LAST_SIZE + BATCH_HEADER_SIZE) // 2 byte for total length and 1 byte for is_last
+	batch := make([]byte, 0, max_payload_size)
 	betCount := 0
 	reader := bufio.NewReader(file)
 
-	for len(batch) < max_size && betCount < config.MaxBetsAmount {
-		// guardo la ult posicion x si la nueva linea no entra en el batch
-		// lastPos, seekErr := file.Seek(0, io.SeekCurrent)
-		// if seekErr != nil {
-		// 	return batch, seekErr
-		// }
+	for {
+		// If I reached the max number of bets, return the batch
+		if betCount >= config.MaxBetsAmount {
+			return serializeBatch(batch, false), nil
+		}
 
-		// leo linea (== bet)
+		// guardo la ult posicion x si la nueva linea no entra en el batch
+		lastPos, seekErr := file.Seek(0, io.SeekCurrent)
+		if seekErr != nil {
+			return serializeBatch(batch, false), nil
+		}
+
 		line, readErr := reader.ReadString('\n')
 		line = strings.TrimRight(line, "\r\n")
+		log.Info("Leo linea: " + line)
 
-		// readErr que no es EOF -> devuelvo hasta donde llegue y el error
+		// readErr que no es EOF -> devuelvo hasta donde llegue
 		if readErr != nil && readErr != io.EOF {
-			betsBatch := serializeBatch(batch, false)
-			return betsBatch, nil
+			continue
 		}
 		// readErr EOF y linea vacia -> devuelvo lo que tengo y EOF
 		if len(line) == 0 && readErr == io.EOF {
-			betsBatch := serializeBatch(batch, true)
-			return betsBatch, nil
+			return serializeBatch(batch, true), readErr
 		}
-		// linea vacia, sigo
+
 		if line == "" {
 			continue
 		}
 
-		// obtengo la bet y la serializo
-		bet, betErr := getBetPacket(line, config.ID)
+		serializedBet, betErr := getSerializedBet(line, config.ID)
 		if betErr != nil {
-			betsBatch := serializeBatch(batch, false)
-			return betsBatch, nil
+			continue
 		}
-		serializedBet := serializeBet(*bet)
 
-		if len(serializedBet) > max_size {
-			betsBatch := serializeBatch(batch, false)
-			return betsBatch, nil
+		if len(serializedBet) > max_payload_size {
+			continue // bet demasiado grande, la ignoro
 		}
 
 		// complete un batch, devuelvo para mandar
-		// if betCount >= config.MaxBetsAmount || len(batch)+len(serializedBet) > config.MaxSizeAmount {
-		// 	_, seekErr = file.Seek(lastPos, io.SeekStart)
-		// 	if seekErr != nil {
-		// 		return batch, seekErr
-		// 	}
-		// 	reader.Reset(file)
-		// 	return batch, nil
-		// }
+		if len(batch)+len(serializedBet) > max_payload_size {
+			_, seekErr = file.Seek(lastPos, io.SeekStart)
+			if seekErr != nil {
+				return serializeBatch(batch, false), nil
+			}
+			reader.Reset(file)
+			return serializeBatch(batch, false), nil
+		}
 
 		betCount++
 		batch = append(batch, serializedBet...)
@@ -84,9 +83,6 @@ func getBetBatchToSend(file *os.File, config ClientConfig) ([]byte, error) {
 			return betsBatch, readErr
 		}
 	}
-
-	betsBatch := serializeBatch(batch, false)
-	return betsBatch, nil
 }
 
 func serializeBatch(batch []byte, isLastBatch bool) []byte {
@@ -101,6 +97,7 @@ func serializeBatch(batch []byte, isLastBatch bool) []byte {
 	betsBatch[2] = byte(lenBatch & 0x00FF)
 	copy(betsBatch[(IS_LAST_SIZE+BATCH_HEADER_SIZE):], batch)
 
+	log.Info("Serializo un batch")
 	return betsBatch
 }
 

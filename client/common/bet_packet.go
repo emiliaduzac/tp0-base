@@ -68,5 +68,14 @@ func serializeBet(betPacket BetPacket) []byte {
 	off += copy(betMsg[off:], betPacket.Birthdate)
 	copy(betMsg[off:], betPacket.Number)
 
+	log.Info("Serializo una bet")
 	return betMsg
+}
+
+func getSerializedBet(line string, cliId string) ([]byte, error) {
+	bet, betErr := getBetPacket(line, cliId)
+	if betErr != nil {
+		return nil, betErr
+	}
+	return serializeBet(*bet), nil
 }
