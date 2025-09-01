@@ -43,7 +43,6 @@ func getBetBatchToSend(file *os.File, config ClientConfig) ([]byte, error) {
 
 		line, readErr := reader.ReadString('\n')
 		line = strings.TrimRight(line, "\r\n")
-		log.Info("Leo linea: " + line)
 		// readErr EOF y linea vacia -> devuelvo lo que tengo y EOF
 		if len(line) == 0 && readErr == io.EOF {
 			return serializeBatch(batch, true), readErr
@@ -55,11 +54,11 @@ func getBetBatchToSend(file *os.File, config ClientConfig) ([]byte, error) {
 
 		serializedBet, betErr := getSerializedBet(line, config.ID)
 		if betErr != nil { // ProtocolError
-			log.Error(
-				"action: serialize_bet | result: fail | client_id: %v | error: %v",
-				config.ID,
-				betErr,
-			)
+			// log.Error(
+			// 	"action: serialize_bet | result: fail | client_id: %v | error: %v",
+			// 	config.ID,
+			// 	betErr,
+			// )
 			continue
 		}
 
@@ -100,7 +99,6 @@ func serializeBatch(batch []byte, isLastBatch bool) []byte {
 	betsBatch[2] = byte(lenBatch & 0x00FF)
 	copy(betsBatch[(IS_LAST_SIZE+BATCH_HEADER_SIZE):], batch)
 
-	log.Info("Serializo un batch")
 	return betsBatch
 }
 

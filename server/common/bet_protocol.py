@@ -34,6 +34,7 @@ def read_bets_from_socket(client_sock):
             fields_length = read_n_bytes(client_sock, HEADER_SIZE)
             if len(fields_length) < TOTAL_FIELDS_BET:
                 status = "fail"
+                print("aca pongo fail")
                 continue
             
             bet_fields = []
@@ -46,6 +47,7 @@ def read_bets_from_socket(client_sock):
                 bet_fields.append(field.decode('utf-8'))
 
             if len(bet_fields) < 6:
+                print("aca pongo fail")
                 status = "fail"
                 continue
 

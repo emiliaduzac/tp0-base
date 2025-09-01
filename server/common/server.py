@@ -59,7 +59,7 @@ class Server:
             
             except ProtocolError as e:
                 send_nack(client_sock)
-                logging.error(f"action: receive_bet_message | result: fail | error: {e}")
+                #logging.error(f"action: receive_bet_message | result: fail | error: {e}")
             
         client_sock.close()
 
