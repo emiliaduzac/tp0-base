@@ -26,7 +26,7 @@ func getBetBatchToSend(file *os.File, config ClientConfig) ([]byte, error) {
 	betCount := 0
 	reader := bufio.NewReader(file)
 
-	for len(batch) < max_size && betCount+1 < config.MaxBetsAmount {
+	for len(batch) < max_size && betCount < config.MaxBetsAmount {
 		// guardo la ult posicion x si la nueva linea no entra en el batch
 		// lastPos, seekErr := file.Seek(0, io.SeekCurrent)
 		// if seekErr != nil {
@@ -38,9 +38,14 @@ func getBetBatchToSend(file *os.File, config ClientConfig) ([]byte, error) {
 		line = strings.TrimRight(line, "\r\n")
 
 		// readErr que no es EOF -> devuelvo hasta donde llegue y el error
+		if readErr != nil && readErr != io.EOF {
+			betsBatch := serializeBatch(batch, false)
+			return betsBatch, nil
+		}
 		// readErr EOF y linea vacia -> devuelvo lo que tengo y EOF
-		if (readErr != nil && readErr != io.EOF) || (len(line) == 0 && readErr == io.EOF) {
-			return batch, readErr
+		if len(line) == 0 && readErr == io.EOF {
+			betsBatch := serializeBatch(batch, true)
+			return betsBatch, nil
 		}
 		// linea vacia, sigo
 		if line == "" {
@@ -50,7 +55,8 @@ func getBetBatchToSend(file *os.File, config ClientConfig) ([]byte, error) {
 		// obtengo la bet y la serializo
 		bet, betErr := getBetPacket(line, config.ID)
 		if betErr != nil {
-			return batch, betErr
+			betsBatch := serializeBatch(batch, false)
+			return betsBatch, nil
 		}
 		serializedBet := serializeBet(*bet)
 
@@ -75,7 +81,7 @@ func getBetBatchToSend(file *os.File, config ClientConfig) ([]byte, error) {
 		// fin archivo, devuelvo lo que tengo
 		if readErr == io.EOF {
 			betsBatch := serializeBatch(batch, true)
-			return betsBatch, nil
+			return betsBatch, readErr
 		}
 	}
 
