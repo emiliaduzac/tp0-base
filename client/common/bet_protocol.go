@@ -2,10 +2,19 @@ package common
 
 import (
 	"bufio"
+	"io"
 	"net"
-
-	"github.com/spf13/viper"
+	"os"
+	"strings"
 )
+
+type ProtocolError struct {
+	Message string
+}
+
+func (e *ProtocolError) Error() string {
+	return e.Message
+}
 
 // Packet structure for a bet.
 // First 6 bytes are lengths of the respective fields
@@ -28,36 +37,81 @@ type BetPacket struct {
 	Number    string
 }
 
-// getBetPacket reads the bet information from environment variables and returns a Bet struct
-func getBetPacket(cliId string) BetPacket {
-	v := viper.New()
-	v.AutomaticEnv()
-	v.BindEnv("nombre", "NOMBRE")
-	v.BindEnv("apellido", "APELLIDO")
-	v.BindEnv("dni", "DOCUMENTO")
-	v.BindEnv("nacimiento", "NACIMIENTO")
-	v.BindEnv("numero", "NUMERO")
+func getBetBatch(file *os.File, config ClientConfig) ([]byte, error) {
+	batch := make([]byte, 0, config.MaxSizeAmount)
+	betCount := 0
+	reader := bufio.NewReader(file)
 
-	lastName := v.GetString("apellido")
-	name := v.GetString("nombre")
-	document := v.GetString("dni")
-	birthdate := v.GetString("nacimiento")
-	number := v.GetString("numero")
+	for {
+		// guardo la ult posicion x si la nueva linea no entra en el batch
+		lastPos, seekErr := file.Seek(0, io.SeekCurrent)
+		if seekErr != nil {
+			return batch, seekErr
+		}
 
-	return BetPacket{
-		AgencyLen:    byte(len(cliId)),
-		FirstNameLen: byte(len([]byte(name))),
-		LastNameLen:  byte(len([]byte(lastName))),
-		DocumentLen:  byte(len([]byte(document))),
-		BirthdateLen: byte(len([]byte(birthdate))),
-		NumberLen:    byte(len([]byte(number))),
-		Agency:       cliId,
-		FirstName:    name,
-		LastName:     lastName,
-		Document:     document,
-		Birthdate:    birthdate,
-		Number:       number,
+		// leo linea (== bet)
+		line, readErr := reader.ReadString('\n')
+		// readErr que no es EOF -> devuelvo hasta donde llegue y el error
+		// readErr EOF y linea vacia -> devuelvo lo que tengo y EOF
+		if readErr != nil && readErr != io.EOF || (len(line) == 0 && readErr == io.EOF) {
+			return batch, readErr
+		}
+		// linea vacia, sigo
+		if line == "" {
+			continue
+		}
+
+		// obtengo la bet y la serializo
+		bet, betErr := getBetPacket(strings.TrimSuffix(line, "\n"), config.ID)
+		if betErr != nil {
+			return batch, betErr
+		}
+		serializedBet := serializeBet(*bet)
+
+		if len(serializedBet) > config.MaxSizeAmount {
+			return batch, &ProtocolError{Message: "Bet size exceeds maximum batch size"}
+		}
+
+		// complete un batch, devuelvo para mandar
+		if betCount >= config.MaxBetsAmount || len(batch)+len(serializedBet) > config.MaxSizeAmount {
+			_, seekErr = file.Seek(lastPos, io.SeekStart)
+			if seekErr != nil {
+				return batch, seekErr
+			}
+			reader.Reset(file)
+			return batch, nil
+		}
+
+		betCount++
+		batch = append(batch, serializedBet...)
+
+		// fin archivo, devuelvo lo que tengo
+		if readErr == io.EOF {
+			return batch, nil
+		}
 	}
+}
+
+func getBetPacket(line string, cliId string) (*BetPacket, error) {
+	fields := strings.Split(line, ",")
+	if len(fields) != 5 {
+		return nil, &ProtocolError{Message: "Invalid bet format"}
+	}
+
+	return &BetPacket{
+		AgencyLen:    byte(len([]byte(cliId))),
+		FirstNameLen: byte(len([]byte(fields[0]))),
+		LastNameLen:  byte(len([]byte(fields[1]))),
+		DocumentLen:  byte(len([]byte(fields[2]))),
+		BirthdateLen: byte(len([]byte(fields[3]))),
+		NumberLen:    byte(len([]byte(fields[4]))),
+		Agency:       cliId,
+		FirstName:    fields[0],
+		LastName:     fields[1],
+		Document:     fields[2],
+		Birthdate:    fields[3],
+		Number:       fields[4],
+	}, nil
 }
 
 // serializeBet converts a BetPacket into a slice of bytes for transmission

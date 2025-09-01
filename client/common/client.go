@@ -2,7 +2,9 @@ package common
 
 import (
 	"context"
+	"io"
 	"net"
+	"os"
 	"os/signal"
 	"syscall"
 	"time"
@@ -18,6 +20,8 @@ type ClientConfig struct {
 	ServerAddress string
 	LoopAmount    int
 	LoopPeriod    time.Duration
+	MaxBetsAmount int
+	MaxSizeAmount int
 }
 
 // Client Entity that encapsulates how
@@ -54,7 +58,7 @@ func (c *Client) createClientSocket() error {
 	return nil
 }
 
-// StartClientLoop Send messages to the client until some time threshold is met
+// StartClientLoop Send messages all the bets to the server
 func (c *Client) StartClientLoop() {
 	// Handle SIGINT and SIGTERM
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
@@ -70,41 +74,71 @@ func (c *Client) StartClientLoop() {
 	}
 
 	// Get the serialized bet_pck message to send, using the env variables
-	bet_pck := getBetPacket(c.config.ID)
-	betMsg := serializeBet(bet_pck)
-
-	// Create the connection the server
-	r := c.createClientSocket()
-	if r != nil {
-		log.Errorf("action: create_socket | result: fail | client_id: %v | error: %v",
-			c.config.ID,
-			r)
+	err := c.sendBets()
+	if err != nil {
+		log.Errorf("action: apuestas_enviadas | result: fail | error: %v", err)
 		return
 	}
 
-	// Send bet to the server
-	sendErr := sendMessage(c.conn, betMsg)
-	if sendErr != nil {
-		log.Errorf("action: apuesta_enviada | result: fail | dni: %v | numero: %v",
+	log.Infof("action: apuestas_enviadas | result: success | client_id: %v", c.config.ID)
+}
+
+func (c *Client) sendBets() error {
+	file, err := os.Open("/data/agency-" + c.config.ID + ".csv") // OBVIAMENTE NO DEJAR
+	if err != nil {
+		log.Errorf("action: open_file | result: fail | client_id: %v | error: %v",
 			c.config.ID,
-			sendErr,
+			err)
+		return nil //ya queda manejado aca el error -> solo logg
+	}
+	defer file.Close()
+
+	for {
+		batch, err := getBetBatch(file, c.config)
+		// si obtengo batch y error, mando ese batch, loggeo el error y sigo ???
+
+		// no hay mas nada por enviar
+		if err == io.EOF && len(batch) == 0 {
+			return nil
+		}
+
+		// Create the connection the server
+		r := c.createClientSocket()
+		if r != nil {
+			log.Errorf("action: create_socket | result: fail | client_id: %v | error: %v",
+				c.config.ID,
+				r)
+			return nil
+		}
+
+		// Send bet to the server
+		sendErr := sendMessage(c.conn, batch)
+		if sendErr != nil {
+			log.Errorf("action: apuesta_enviada | result: fail | client_id: %v | error: %v",
+				c.config.ID,
+				sendErr,
+			)
+			return nil
+		}
+
+		// Wait for server response to ensure that the message was received
+		msg, readErr := getAck(c.conn)
+		c.conn.Close()
+		if readErr != nil || msg != 0 {
+			log.Errorf("action: receive_message | result: fail | client_id: %v | error: %v",
+				c.config.ID,
+				readErr,
+			)
+			return nil
+		}
+
+		log.Infof("action: apuesta_enviada | result: success | client_id: %v",
+			c.config.ID,
+			batch,
 		)
-		return
-	}
 
-	// Wait for server response to ensure that the message was received
-	msg, readErr := getAck(c.conn)
-	c.conn.Close()
-	if readErr != nil || msg != 0 {
-		log.Errorf("action: receive_message | result: fail | client_id: %v | error: %v",
-			c.config.ID,
-			readErr,
-		)
-		return
+		if err == io.EOF {
+			return nil
+		}
 	}
-
-	log.Infof("action: apuesta_enviada | result: success | dni: %v | numero: %v",
-		bet_pck.Document,
-		bet_pck.Number,
-	)
 }
