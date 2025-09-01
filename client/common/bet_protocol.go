@@ -8,6 +8,10 @@ import (
 	"strings"
 )
 
+const IS_LAST_SIZE = 1
+const BATCH_HEADER_SIZE = 2
+const HEADER_SIZE = 6
+
 type ProtocolError struct {
 	Message string
 }
@@ -16,44 +20,26 @@ func (e *ProtocolError) Error() string {
 	return e.Message
 }
 
-// Packet structure for a bet.
-// First 6 bytes are lengths of the respective fields
-// followed by the actual data. Total length can be calculated by adding the firts 6 bytes
-// together and adding 6 to it.
-type BetPacket struct {
-	// Lengths
-	AgencyLen    byte
-	FirstNameLen byte
-	LastNameLen  byte
-	DocumentLen  byte
-	BirthdateLen byte
-	NumberLen    byte
-	// Fields
-	Agency    string
-	FirstName string
-	LastName  string
-	Document  string
-	Birthdate string
-	Number    string
-}
-
-func getBetBatch(file *os.File, config ClientConfig) ([]byte, error) {
-	batch := make([]byte, 0, config.MaxSizeAmount)
+func getBetBatchToSend(file *os.File, config ClientConfig) ([]byte, error) {
+	max_size := config.MaxSizeAmount - (IS_LAST_SIZE + BATCH_HEADER_SIZE) // 2 byte for total length and 1 byte for is_last
+	batch := make([]byte, 0, max_size)
 	betCount := 0
 	reader := bufio.NewReader(file)
 
-	for {
+	for len(batch) < max_size && betCount+1 < config.MaxBetsAmount {
 		// guardo la ult posicion x si la nueva linea no entra en el batch
-		lastPos, seekErr := file.Seek(0, io.SeekCurrent)
-		if seekErr != nil {
-			return batch, seekErr
-		}
+		// lastPos, seekErr := file.Seek(0, io.SeekCurrent)
+		// if seekErr != nil {
+		// 	return batch, seekErr
+		// }
 
 		// leo linea (== bet)
 		line, readErr := reader.ReadString('\n')
+		line = strings.TrimRight(line, "\r\n")
+
 		// readErr que no es EOF -> devuelvo hasta donde llegue y el error
 		// readErr EOF y linea vacia -> devuelvo lo que tengo y EOF
-		if readErr != nil && readErr != io.EOF || (len(line) == 0 && readErr == io.EOF) {
+		if (readErr != nil && readErr != io.EOF) || (len(line) == 0 && readErr == io.EOF) {
 			return batch, readErr
 		}
 		// linea vacia, sigo
@@ -62,82 +48,64 @@ func getBetBatch(file *os.File, config ClientConfig) ([]byte, error) {
 		}
 
 		// obtengo la bet y la serializo
-		bet, betErr := getBetPacket(strings.TrimSuffix(line, "\n"), config.ID)
+		bet, betErr := getBetPacket(line, config.ID)
 		if betErr != nil {
 			return batch, betErr
 		}
 		serializedBet := serializeBet(*bet)
 
-		if len(serializedBet) > config.MaxSizeAmount {
-			return batch, &ProtocolError{Message: "Bet size exceeds maximum batch size"}
+		if len(serializedBet) > max_size {
+			betsBatch := serializeBatch(batch, false)
+			return betsBatch, nil
 		}
 
 		// complete un batch, devuelvo para mandar
-		if betCount >= config.MaxBetsAmount || len(batch)+len(serializedBet) > config.MaxSizeAmount {
-			_, seekErr = file.Seek(lastPos, io.SeekStart)
-			if seekErr != nil {
-				return batch, seekErr
-			}
-			reader.Reset(file)
-			return batch, nil
-		}
+		// if betCount >= config.MaxBetsAmount || len(batch)+len(serializedBet) > config.MaxSizeAmount {
+		// 	_, seekErr = file.Seek(lastPos, io.SeekStart)
+		// 	if seekErr != nil {
+		// 		return batch, seekErr
+		// 	}
+		// 	reader.Reset(file)
+		// 	return batch, nil
+		// }
 
 		betCount++
 		batch = append(batch, serializedBet...)
 
 		// fin archivo, devuelvo lo que tengo
 		if readErr == io.EOF {
-			return batch, nil
+			betsBatch := serializeBatch(batch, true)
+			return betsBatch, nil
 		}
 	}
+
+	betsBatch := serializeBatch(batch, false)
+	return betsBatch, nil
 }
 
-func getBetPacket(line string, cliId string) (*BetPacket, error) {
-	fields := strings.Split(line, ",")
-	if len(fields) != 5 {
-		return nil, &ProtocolError{Message: "Invalid bet format"}
+func serializeBatch(batch []byte, isLastBatch bool) []byte {
+	lenBatch := len(batch)
+
+	betsBatch := make([]byte, lenBatch+(IS_LAST_SIZE+BATCH_HEADER_SIZE))
+	betsBatch[0] = byte(0)
+	if isLastBatch {
+		betsBatch[0] = 1
 	}
+	betsBatch[1] = byte(lenBatch >> 8)
+	betsBatch[2] = byte(lenBatch & 0x00FF)
+	copy(betsBatch[(IS_LAST_SIZE+BATCH_HEADER_SIZE):], batch)
 
-	return &BetPacket{
-		AgencyLen:    byte(len([]byte(cliId))),
-		FirstNameLen: byte(len([]byte(fields[0]))),
-		LastNameLen:  byte(len([]byte(fields[1]))),
-		DocumentLen:  byte(len([]byte(fields[2]))),
-		BirthdateLen: byte(len([]byte(fields[3]))),
-		NumberLen:    byte(len([]byte(fields[4]))),
-		Agency:       cliId,
-		FirstName:    fields[0],
-		LastName:     fields[1],
-		Document:     fields[2],
-		Birthdate:    fields[3],
-		Number:       fields[4],
-	}, nil
+	return betsBatch
 }
 
-// serializeBet converts a BetPacket into a slice of bytes for transmission
-func serializeBet(betPacket BetPacket) []byte {
-	totalLen := 6 + betPacket.AgencyLen + betPacket.FirstNameLen + betPacket.LastNameLen +
-		betPacket.DocumentLen + betPacket.BirthdateLen + betPacket.NumberLen
-
-	betMsg := make([]byte, totalLen)
-	betMsg[0] = betPacket.AgencyLen
-	betMsg[1] = betPacket.FirstNameLen
-	betMsg[2] = betPacket.LastNameLen
-	betMsg[3] = betPacket.DocumentLen
-	betMsg[4] = betPacket.BirthdateLen
-	betMsg[5] = betPacket.NumberLen
-
-	off := 6
-	off += copy(betMsg[off:], betPacket.Agency)
-	off += copy(betMsg[off:], betPacket.FirstName)
-	off += copy(betMsg[off:], betPacket.LastName)
-	off += copy(betMsg[off:], betPacket.Document)
-	off += copy(betMsg[off:], betPacket.Birthdate)
-	copy(betMsg[off:], betPacket.Number)
-
-	return betMsg
-}
-
-func getAck(conn net.Conn) (byte, error) {
+func getResponse(conn net.Conn) (byte, error) {
 	return bufio.NewReader(conn).ReadByte()
+}
+
+func getBetFile(id string) (*os.File, error) {
+	file, err := os.Open("/data/agency-" + id + ".csv")
+	if err != nil {
+		return nil, err
+	}
+	return file, nil
 }

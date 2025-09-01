@@ -3,7 +3,7 @@ import socket
 import logging
 
 from common.utils import store_bets
-from common.bet_protocol import read_bet_from_socket, ProtocolError, send_ack, send_nack
+from common.bet_protocol import read_bets_from_socket, ProtocolError, send_ack, send_nack
 
 class Server:
     def __init__(self, port, listen_backlog):
@@ -44,27 +44,24 @@ class Server:
         If a problem arises in the communication with the client, the
         client socket will also be closed
         """
-        try:
-            bet = read_bet_from_socket(client_sock)
-            addr = client_sock.getpeername()
-            logging.info(f'action: apuesta_recibida | result: success | ip: {addr[0]} | msg: {bet}')
+        is_last = False
+        while not is_last:
+            try:
+                bets, is_last = read_bets_from_socket(client_sock)
+                addr = client_sock.getpeername()
+                store_bets(bets)
+                send_ack(client_sock)
+                logging.info(f'action: send_message | result: success | ip: {addr[0]} | msg: {0}')
+
+            except OSError as e:
+                logging.error(f"action: receive_message | result: fail | error: {e}")
+                break
             
-            store_bets([bet])
-            logging.info(f'action: apuesta_almacenada | result: success | dni: {bet.document} | numero: {bet.number}')
-
-            # Send ack to client.
-            send_ack(client_sock)
-            logging.info(f'action: send_message | result: success | ip: {addr[0]} | msg: {0}')
-
-        except OSError as e:
-            logging.error(f"action: receive_message | result: fail | error: {e}")
-
-        except ProtocolError as e:
-            send_nack(client_sock)
-            logging.error(f"action: receive_bet_message | result: fail | error: {e}")
-
-        finally:
-            client_sock.close()
+            except ProtocolError as e:
+                send_nack(client_sock)
+                logging.error(f"action: receive_bet_message | result: fail | error: {e}")
+            
+        client_sock.close()
 
     def __accept_new_connection(self):
         """
@@ -84,6 +81,7 @@ class Server:
         """
         Handle graceful shutdown of the server
         """
+        print("------>Shutting down server")
         logging.debug(f"action: shutdown | result: in_progress | signal: {signum}")  
         self._running = False
         self.close()

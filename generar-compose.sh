@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # base variables in case no args are given
-OUTFILE="docker-compose-2-dev.yaml"
-NCLIENTS=1
+OUTFILE="docker-compose-dev.yaml"
+NCLIENTS=5
 
 # if 2 args are given, override the defaults
 if [ $# -eq 2 ]; then
