@@ -103,6 +103,9 @@ func (c *Client) sendBets() error {
 	for {
 		log.Info("Llamo a getBetBatchToSend")
 		batch, err := getBetBatchToSend(file, c.config)
+		if len(batch) == 0 {
+			return nil
+		}
 
 		// Send bet to the server
 		sendErr := sendMessage(c.conn, batch)
@@ -129,7 +132,7 @@ func (c *Client) sendBets() error {
 		)
 
 		if err == io.EOF {
-			return nil
+			break
 		}
 	}
 	return nil

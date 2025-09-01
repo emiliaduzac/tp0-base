@@ -22,6 +22,9 @@ func (e *ProtocolError) Error() string {
 
 func getBetBatchToSend(file *os.File, config ClientConfig) ([]byte, error) {
 	max_payload_size := config.MaxSizeAmount - (IS_LAST_SIZE + BATCH_HEADER_SIZE) // 2 byte for total length and 1 byte for is_last
+	if max_payload_size <= 0 {
+		return nil, &ProtocolError{"Max payload size too small"}
+	}
 	batch := make([]byte, 0, max_payload_size)
 	betCount := 0
 	reader := bufio.NewReader(file)
@@ -35,17 +38,12 @@ func getBetBatchToSend(file *os.File, config ClientConfig) ([]byte, error) {
 		// guardo la ult posicion x si la nueva linea no entra en el batch
 		lastPos, seekErr := file.Seek(0, io.SeekCurrent)
 		if seekErr != nil {
-			return serializeBatch(batch, false), nil
+			continue
 		}
 
 		line, readErr := reader.ReadString('\n')
 		line = strings.TrimRight(line, "\r\n")
 		log.Info("Leo linea: " + line)
-
-		// readErr que no es EOF -> devuelvo hasta donde llegue
-		if readErr != nil && readErr != io.EOF {
-			continue
-		}
 		// readErr EOF y linea vacia -> devuelvo lo que tengo y EOF
 		if len(line) == 0 && readErr == io.EOF {
 			return serializeBatch(batch, true), readErr
@@ -56,7 +54,12 @@ func getBetBatchToSend(file *os.File, config ClientConfig) ([]byte, error) {
 		}
 
 		serializedBet, betErr := getSerializedBet(line, config.ID)
-		if betErr != nil {
+		if betErr != nil { // ProtocolError
+			log.Error(
+				"action: serialize_bet | result: fail | client_id: %v | error: %v",
+				config.ID,
+				betErr,
+			)
 			continue
 		}
 
