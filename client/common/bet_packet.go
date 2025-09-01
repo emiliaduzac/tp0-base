@@ -49,7 +49,7 @@ func getBetPacket(line string, cliId string) (*BetPacket, error) {
 
 // serializeBet converts a BetPacket into a slice of bytes for transmission
 func serializeBet(betPacket BetPacket) []byte {
-	totalLen := HEADER_SIZE + betPacket.AgencyLen + betPacket.FirstNameLen + betPacket.LastNameLen +
+	totalLen := BET_HEADER + betPacket.AgencyLen + betPacket.FirstNameLen + betPacket.LastNameLen +
 		betPacket.DocumentLen + betPacket.BirthdateLen + betPacket.NumberLen
 
 	betMsg := make([]byte, totalLen)
@@ -60,7 +60,7 @@ func serializeBet(betPacket BetPacket) []byte {
 	betMsg[4] = betPacket.BirthdateLen
 	betMsg[5] = betPacket.NumberLen
 
-	off := HEADER_SIZE
+	off := BET_HEADER
 	off += copy(betMsg[off:], betPacket.Agency)
 	off += copy(betMsg[off:], betPacket.FirstName)
 	off += copy(betMsg[off:], betPacket.LastName)

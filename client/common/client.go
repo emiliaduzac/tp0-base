@@ -1,6 +1,7 @@
 package common
 
 import (
+	"bufio"
 	"context"
 	"io"
 	"net"
@@ -79,13 +80,10 @@ func (c *Client) StartClientLoop() {
 			r)
 		return
 	}
+	defer c.closeSocket()
 
 	// Send all bets from file
-	_ = c.sendBets()
-	// if err != nil {
-	// 	log.Infof("action: send_bets | result: success | client_id: %v", c.config.ID)
-	// }
-	c.closeSocket()
+	c.sendBets()
 }
 
 func (c *Client) sendBets() error {
@@ -99,25 +97,22 @@ func (c *Client) sendBets() error {
 	}
 	defer file.Close()
 
+	reader := bufio.NewReader(file)
+	max_payload_size := c.config.MaxSizeAmount - BATCH_HEADER
+	buffer := make([]byte, 0, max_payload_size)
 	for {
-		batch, err := getBetBatchToSend(file, c.config)
-		if len(batch) == 0 {
-			return nil
-		}
+		// Get the next batch of bets to send
+		batch, lastBet, err := getBetBatchToSend(reader, c.config, buffer)
 
-		// Send bet to the server
+		// Send the batch to the server
 		sendErr := sendMessage(c.conn, batch)
 		if sendErr != nil {
-			// log.Errorf("action: send_batch | result: fail | client_id: %v | error: %v",
-			// 	c.config.ID,
-			// 	sendErr,
-			// )
 			break
 		}
 
 		// Wait for server response to ensure that the message was received and keep sending
-		msg, readErr := getResponse(c.conn)
-		if readErr != nil || msg != 0 {
+		_, readErr := getResponse(c.conn)
+		if readErr != nil {
 			log.Errorf("action: receive_message | result: fail | client_id: %v | error: %v",
 				c.config.ID,
 				readErr,
@@ -125,12 +120,17 @@ func (c *Client) sendBets() error {
 			return readErr
 		}
 
-		// log.Infof("action: send_batch | result: success | client_id: %v",
-		// 	c.config.ID,
-		// )
-
+		// If all the bets were sent, exit the loop
 		if err == io.EOF {
 			break
+		}
+
+		// If there was a bet that didn't fit in the batch, keep it for the next iteration
+		if lastBet != nil {
+			buffer = make([]byte, 0, max_payload_size)
+			buffer = append(buffer, lastBet...)
+		} else {
+			buffer = make([]byte, 0, max_payload_size)
 		}
 	}
 	return nil
