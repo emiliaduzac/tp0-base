@@ -65,10 +65,8 @@ def send_winners(client_sock, winners):
     """
     Notify a client with the winners of their agency
     """
-    print("Winners to send:", winners)
     winners_msg = bytearray()
     for winner in winners:
-        print("Winner actual :", body.decode('utf-8'))
         body = winner.encode('utf-8')
         winners_msg.extend(bytes([len(body)]))
         winners_msg.extend(body)

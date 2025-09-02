@@ -113,6 +113,7 @@ func (c *Client) StartClient() {
 		cantWinners, _ := parseWinnersResponse(reader)
 		log.Infof("action: consulta_ganadores | result: success | cant_ganadores: %d.", cantWinners)
 	}
+	time.Sleep(c.config.LoopPeriod)
 	//}
 }
 

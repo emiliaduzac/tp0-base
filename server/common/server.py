@@ -58,18 +58,14 @@ class Server:
                 
                 if not more_batchs_coming and agency is not None:
                     self.clients_sending -= 1
+                    self.clients_waiting_winners[agency] = client_sock
                     if self.clients_sending == 0:
                         # notify all clients waiting for winners
                         all_winners = get_winners()
                         for act_agency, sock in self.clients_waiting_winners.items():
-                            print("Notifying winners to agency", act_agency)
-                            winners = all_winners.get(act_agency, [])
+                            winners = all_winners.get(int(act_agency), [])
                             send_winners(sock, winners)
                             sock.close()
-                            print("-Done winners to agency", act_agency)
-
-                    else:
-                        self.clients_waiting_winners[agency] = client_sock
                     break
 
             except OSError as e:
