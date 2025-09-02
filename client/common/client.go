@@ -132,6 +132,6 @@ func (c *Client) sendBets() error {
 		}
 	}
 
-	time.Sleep(c.config.LoopPeriod)
+	//time.Sleep(c.config.LoopPeriod)
 	return nil
 }
