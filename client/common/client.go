@@ -131,5 +131,7 @@ func (c *Client) sendBets() error {
 			buffer = make([]byte, 0, max_payload_size)
 		}
 	}
+
+	time.Sleep(c.config.LoopPeriod)
 	return nil
 }
