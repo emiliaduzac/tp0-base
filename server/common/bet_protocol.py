@@ -1,12 +1,13 @@
-from common.protocol_utils import read_n_bytes, send_all_bytes, ProtocolError, HEADER_SIZE, IS_LAST_SIZE, BATCH_HEADER_SIZE, TOTAL_FIELDS_BET, OpCodeReq, OpCodeResp
+from common.protocol_utils import read_n_bytes, send_all_bytes, ProtocolError, HEADER_SIZE, OPCODE, BATCH_HEADER_SIZE, TOTAL_FIELDS_BET, OpCodeReq, OpCodeResp
 from common.utils import Bet
 import logging
 
 def read_from_socket(client_sock):
     try:
         # Read if its the last batch (1 byte)
-        op_code = read_n_bytes(client_sock, IS_LAST_SIZE)
+        op_code = read_n_bytes(client_sock, OPCODE)
     except ProtocolError as e:
+        print("Error leyendo op_code")
         raise ProtocolError("Fail to read from socket")
     
     if op_code == OpCodeReq.OC_MORE_BATCHS.value or op_code == OpCodeReq.OC_LAST_BATCH.value:

@@ -1,6 +1,6 @@
 from enum import Enum
 
-IS_LAST_SIZE = 1
+OPCODE = 1
 BATCH_HEADER_SIZE = 2
 HEADER_SIZE = 6
 TOTAL_FIELDS_BET = 6

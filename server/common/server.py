@@ -89,24 +89,28 @@ class Server:
         logging.debug(f"action: shutdown | result: success | signal: {signum}")
 
     def receive_batches(self, op_code, addr, client_sock):
-        addr = client_sock.getpeername()
         while True:
             try:
                 bets, more_batchs_coming = handle_batch(client_sock, op_code)
                 store_bets(bets)
                 print("Stored bets & sent ack")
                 send_ack(client_sock)
+
+                addr = client_sock.getpeername()
                 logging.info(f'action: send_message | result: success | ip: {addr[0]}')
+                
                 if not more_batchs_coming:
                     self.clients_sending -= 1
                     if self.clients_sending == 0:
                         logging.info("action: sorteo | result: success")
                         self.send_winners_to_waiting_clients()
-                        
                     return
+                
             except OSError as e:
+
                 logging.error(f"action: receive_message | result: fail | error: {e}")
                 return
+            
             except ProtocolError as e:
                 send_nack(client_sock)
                 return
@@ -118,12 +122,18 @@ class Server:
             send_nack(client_sock)
             return
 
-        winners = self.get_winners(agency)
-        send_winners(client_sock, winners)
+        if self.clients_sending == 0:
+            winners = self.get_winners(agency)
+            send_winners(client_sock, winners)
+        else:
+            addr = client_sock.getpeername()
+            self.clients_waiting_winners[agency] = addr[0]
+            client_sock.close() 
 
     def send_winners_to_waiting_clients(self):
-        for client_sock, agency in self.clients_waiting_winners.items:
+        for agency, ip in self.clients_waiting_winners.items:
             winners = self.get_winners(agency)
+            client_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             try:
                 send_winners(client_sock, winners)
             except OSError as e:
