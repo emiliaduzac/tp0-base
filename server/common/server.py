@@ -44,14 +44,16 @@ class Server:
         If a problem arises in the communication with the client, the
         client socket will also be closed
         """
-        is_last = False
-        while not is_last:
+        more_batchs_coming = True
+        while more_batchs_coming:
             try:
-                bets, is_last = read_bets_from_socket(client_sock)
+                bets, more_batchs_coming = read_bets_from_socket(client_sock)
                 addr = client_sock.getpeername()
                 store_bets(bets)
                 send_ack(client_sock)
-                logging.info(f'action: send_message | result: success | ip: {addr[0]} | msg: {0}')
+                logging.info(f'action: send_message | result: success | ip: {addr[0]}')
+                if not more_batchs_coming:
+                    break
 
             except OSError as e:
                 logging.error(f"action: receive_message | result: fail | error: {e}")
@@ -59,6 +61,7 @@ class Server:
             
             except ProtocolError as e:
                 send_nack(client_sock)
+                break
                 #logging.error(f"action: receive_bet_message | result: fail | error: {e}")
             
         client_sock.close()
@@ -81,7 +84,6 @@ class Server:
         """
         Handle graceful shutdown of the server
         """
-        print("------>Shutting down server")
         logging.debug(f"action: shutdown | result: in_progress | signal: {signum}")  
         self._running = False
         self.close()

@@ -1,4 +1,4 @@
-from common.socket_utils import read_n_bytes, send_all
+from common.socket_utils import read_n_bytes, send_all, ProtocolError
 from common.utils import Bet
 import logging
 
@@ -20,14 +20,14 @@ def read_bets_from_socket(client_sock):
         ok_bets = 0
         status = "success"
 
-        # Read if its the last batch (1 byte)
-        is_last = read_n_bytes(client_sock, IS_LAST_SIZE)[0] == 1
-        # Read the length of the incoming batch (2 bytes)
-        batch_len = read_n_bytes(client_sock, BATCH_HEADER_SIZE)
-        # If it could not read these bytes, return empty bets and True to close the connection
-        if is_last is None or batch_len is None:
-            return bets, True
-        length = int(batch_len[0])<<8 | int(batch_len[1])
+        try:
+            # Read if its the last batch (1 byte)
+            more_batchs_coming = read_n_bytes(client_sock, IS_LAST_SIZE)[0] == 0
+            # Read the length of the incoming batch (2 bytes)
+            batch_len = read_n_bytes(client_sock, BATCH_HEADER_SIZE)
+            length = int(batch_len[0])<<8 | int(batch_len[1])
+        except ProtocolError as e:
+            raise ProtocolError("Fail to read from socket")
         
         # Read the whole batch
         while total_read < length:
@@ -51,7 +51,7 @@ def read_bets_from_socket(client_sock):
             ok_bets += 1
 
         logging.info(f'action: apuesta_recibida | result: {status} | cantidad: {ok_bets}')
-        return bets, is_last
+        return bets, more_batchs_coming
 
 def read_single_bet(fields_length, client_sock):
     bet_fields = []
@@ -70,5 +70,3 @@ def send_ack(socket):
 def send_nack(socket):
     send_all(socket, b'\x01')
 
-class ProtocolError(Exception):
-    """ Custom exception for protocol errors """

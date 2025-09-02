@@ -20,7 +20,6 @@ type ClientConfig struct {
 	ServerAddress string
 	LoopAmount    int
 	LoopPeriod    time.Duration
-	MaxBetsAmount int
 	MaxSizeAmount int
 }
 
@@ -88,7 +87,6 @@ func (c *Client) StartClientLoop() {
 
 func (c *Client) sendBets() error {
 	file, err := getBetFile(c.config.ID)
-
 	if err != nil {
 		log.Errorf("action: open_file | result: fail | client_id: %v | error: %v",
 			c.config.ID,

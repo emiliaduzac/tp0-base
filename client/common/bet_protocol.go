@@ -12,6 +12,7 @@ const IS_LAST_SIZE = 1
 const BATCH_HEADER_SIZE = 2
 const BATCH_HEADER = IS_LAST_SIZE + BATCH_HEADER_SIZE
 const BET_HEADER = 6
+const MAX_BATCH_SIZE = 8192
 
 type ProtocolError struct {
 	Message string
@@ -26,9 +27,9 @@ func (e *ProtocolError) Error() string {
 // Returns: a slice of bytes with the serialized batch, an error if something went wrong
 // and a slice of bytes with the last bet read if this bet couldn't be added to the batch
 func getBetBatchToSend(reader *bufio.Reader, config ClientConfig, batch []byte) ([]byte, []byte, error) {
-	max_payload_size := config.MaxSizeAmount - BATCH_HEADER
+	betsInBatch := 0
 
-	for len(batch) < max_payload_size {
+	for betsInBatch < config.MaxSizeAmount {
 		line, readErr := reader.ReadString('\n')
 		line = strings.TrimRight(line, "\r\n")
 
@@ -44,17 +45,18 @@ func getBetBatchToSend(reader *bufio.Reader, config ClientConfig, batch []byte) 
 		// Serialize the current bet.
 		serializedBet, betErr := getSerializedBet(line, config.ID)
 		// If there was an error in the bet's format or its too large, skip it.
-		if betErr != nil || len(serializedBet) > max_payload_size {
+		if betErr != nil || len(serializedBet) > MAX_BATCH_SIZE {
 			continue
 		}
 
 		// If this last bet didn't fit in the batch, return what we have and the bet to be sent later
 		// in next batch
-		if len(batch)+len(serializedBet) > max_payload_size {
+		if len(batch)+len(serializedBet) > MAX_BATCH_SIZE {
 			return serializeBatch(batch, false), serializedBet, nil
 		}
 
 		batch = append(batch, serializedBet...)
+		betsInBatch++
 
 		// End of file, return the batch and indicate that its the last one
 		if readErr == io.EOF {

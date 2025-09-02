@@ -6,3 +6,4 @@ bin/
 
 # Agency data
 /.data/*.csv
+/.data/dataset

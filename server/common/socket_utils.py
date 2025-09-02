@@ -6,7 +6,7 @@ def read_n_bytes(client_sock, n):
     while len(data) < n:
         packet = client_sock.recv(n - len(data))
         if not packet:
-            return None
+            raise ProtocolError(f"Fail to read from socket")
         data.extend(packet)
     return data
 
@@ -18,3 +18,6 @@ def send_all(client_sock, msg):
     while total_sent < len(msg):
         sent = client_sock.send(msg[total_sent:])
         total_sent += sent
+
+class ProtocolError(Exception):
+    """ Custom exception for protocol errors """
