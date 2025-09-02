@@ -1,24 +1,12 @@
-from common.protocol_utils import read_n_bytes, send_all_bytes, ProtocolError, HEADER_SIZE, OPCODE, BATCH_HEADER_SIZE, TOTAL_FIELDS_BET, OpCodeReq, OpCodeResp
+from common.protocol_utils import read_n_bytes, send_all_bytes, ProtocolError, HEADER_SIZE, MORE_BATCHS_COMING, BATCH_HEADER_SIZE, TOTAL_FIELDS_BET, IS_LAST_SIZE, OpCodeResp
 from common.utils import Bet
 import logging
 
-def read_from_socket(client_sock):
-    try:
-        # Read if its the last batch (1 byte)
-        op_code = read_n_bytes(client_sock, OPCODE)
-    except ProtocolError as e:
-        print("Error leyendo op_code")
-        raise ProtocolError("Fail to read from socket")
-    
-    if op_code == OpCodeReq.OC_MORE_BATCHS.value or op_code == OpCodeReq.OC_LAST_BATCH.value:
-        return True, op_code # handle bets
-    elif op_code == OpCodeReq.OC_ASK_WINNERS.value:
-        return False, op_code # handle ask winners
-
-def handle_batch(client_sock, op_code):
+def read_bets_from_socket(client_sock):
         """
         Read a whole batch of bets from a socket according to the protocol.
-        First two bytes indicate the length of the batch.
+        First byte indicates if its the last batch (1) or not (0).
+        Next two bytes indicate the length of the batch.
         Then, each bet is read according to the protocol until the read limit is reached (according to 
         the total length of the batch indicated before).
         """
@@ -26,9 +14,12 @@ def handle_batch(client_sock, op_code):
         bets = []
         ok_bets = 0
         status = "success"
-        more_batchs_coming = True if op_code == OpCodeReq.OC_MORE_BATCHS.value else False
+        agency = None
 
         try:
+            # Read if its the last batch (1 byte)
+            more_batchs_coming = read_n_bytes(client_sock, IS_LAST_SIZE)[0] == MORE_BATCHS_COMING
+            # Read the length of the incoming batch (2 bytes)
             batch_len = read_n_bytes(client_sock, BATCH_HEADER_SIZE)
             length = int(batch_len[0])<<8 | int(batch_len[1])
         except ProtocolError as e:
@@ -41,7 +32,7 @@ def handle_batch(client_sock, op_code):
             if len(fields_length) < TOTAL_FIELDS_BET:
                 status = "fail"
                 continue
-            
+
             bet_fields = read_single_bet(fields_length, client_sock)
             if bet_fields is None:
                 status = "fail"
@@ -54,9 +45,10 @@ def handle_batch(client_sock, op_code):
             bets.append(Bet(bet_fields[0], bet_fields[1], bet_fields[2], bet_fields[3], bet_fields[4], bet_fields[5]))
             total_read += HEADER_SIZE + sum(fields_length)
             ok_bets += 1
+            agency = bet_fields[0]
 
         logging.info(f'action: apuesta_recibida | result: {status} | cantidad: {ok_bets}')
-        return bets, more_batchs_coming
+        return bets, more_batchs_coming, agency
 
 def read_single_bet(fields_length, client_sock):
     bet_fields = []
@@ -73,21 +65,23 @@ def send_winners(client_sock, winners):
     """
     Notify a client with the winners of their agency
     """
+    print("Winners to send:", winners)
     winners_msg = bytearray()
     for winner in winners:
+        print("Winner actual :", body.decode('utf-8'))
         body = winner.encode('utf-8')
         winners_msg.extend(bytes([len(body)]))
         winners_msg.extend(body)
 
     msg = bytearray()
-    msg.append(OpCodeResp.OC_WINNERS)
+    msg.append(OpCodeResp.OC_WINNERS.value)
     msg.extend(bytes([(len(winners_msg) >> 8) & 0xFF, len(winners_msg) & 0xFF]))
     msg.extend(winners_msg)
     send_all_bytes(client_sock, msg)
 
 def send_ack(socket):
-    send_all_bytes(socket, bytes([OpCodeResp.OC_ACK]))
+    send_all_bytes(socket, bytes([OpCodeResp.OC_ACK.value]))
 
 def send_nack(socket):
-    send_all_bytes(socket, bytes([OpCodeResp.OC_NACK]))
+    send_all_bytes(socket, bytes([OpCodeResp.OC_NACK.value]))
 

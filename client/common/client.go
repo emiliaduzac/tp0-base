@@ -3,7 +3,6 @@ package common
 import (
 	"bufio"
 	"context"
-	"fmt"
 	"io"
 	"net"
 	"os/signal"
@@ -58,8 +57,8 @@ func (c *Client) createClientSocket() error {
 	return nil
 }
 
-// StartClientLoop Send messages all the bets to the server
-func (c *Client) StartClientLoop() {
+// StartClient Send messages all the bets to the server, and then waits for winners
+func (c *Client) StartClient() {
 	// Handle SIGINT and SIGTERM
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer stop()
@@ -82,38 +81,42 @@ func (c *Client) StartClientLoop() {
 	}
 	defer c.closeSocket()
 
+	reader := bufio.NewReader(c.conn)
+
 	// Send all bets from file
-	c.sendBets()
+	c.sendBets(reader)
 
 	// Ask for winners
-	err := c.askWinners()
-	if err == nil {
-		_, readErr := getResponseOpCode(c.conn)
-		if readErr != nil {
-			log.Errorf("action: receive_message | result: fail | client_id: %v | error: %v",
-				c.config.ID,
-				readErr,
-			)
-			return
-		}
+	//err := c.askWinners()
+	//if err == nil {
+	log.Infof("Starting to wait for winners...")
+	// _, readErr := getResponseOpCode(c.conn)
+	// if readErr != nil {
+	// 	log.Errorf("action: receive_message | result: fail | client_id: %v | error: %v",
+	// 		c.config.ID,
+	// 		readErr,
+	// 	)
+	// 	return
+	// }
 
-		res, readErr := getResponseOpCode(c.conn)
-		if readErr != nil {
-			log.Errorf("action: receive_message | result: fail | client_id: %v | error: %v",
-				c.config.ID,
-				readErr,
-			)
-			return
-		}
-
-		if res == byte(OC_WINNERS) {
-			cant := 0
-			log.Infof("action: consulta_ganadores | result: success | cant_ganadores: %d.", cant)
-		}
+	res, readErr := getResponseOpCode(reader)
+	if readErr != nil {
+		log.Errorf("action: receive_message | result: fail | client_id: %v | error: %v",
+			c.config.ID,
+			readErr,
+		)
+		return
 	}
+	if res == byte(OC_WINNERS) {
+		reader := bufio.NewReader(reader)
+		log.Infof("--Reading winners...")
+		cantWinners, _ := parseWinnersResponse(reader)
+		log.Infof("action: consulta_ganadores | result: success | cant_ganadores: %d.", cantWinners)
+	}
+	//}
 }
 
-func (c *Client) sendBets() error {
+func (c *Client) sendBets(connReader *bufio.Reader) error {
 	file, err := getBetFile(c.config.ID)
 	if err != nil {
 		log.Errorf("action: open_file | result: fail | client_id: %v | error: %v",
@@ -123,22 +126,22 @@ func (c *Client) sendBets() error {
 	}
 	defer file.Close()
 
-	reader := bufio.NewReader(file)
+	fileReader := bufio.NewReader(file)
 	max_payload_size := c.config.MaxSizeAmount - BATCH_HEADER
 	buffer := make([]byte, 0, max_payload_size)
 	for {
 		// Get the next batch of bets to send
-		batch, lastBet, err := getBetBatchToSend(reader, c.config, buffer)
+		batch, lastBet, err := getBetBatchToSend(fileReader, c.config, buffer)
 
 		// Send the batch to the server
-		fmt.Printf("Sending batch of size %d\n", len(batch))
+		log.Infof("Sending batch of size %d\n", len(batch))
 		sendErr := sendMessage(c.conn, batch)
 		if sendErr != nil {
 			break
 		}
 
 		// Wait for server response to ensure that the message was received and keep sending
-		_, readErr := getResponseOpCode(c.conn)
+		_, readErr := getResponseOpCode(connReader)
 		if readErr != nil {
 			log.Errorf("action: receive_message | result: fail | client_id: %v | error: %v",
 				c.config.ID,
@@ -165,16 +168,16 @@ func (c *Client) sendBets() error {
 	return nil
 }
 
-func (c *Client) askWinners() error {
-	request, err := getWinnersRequest(c.config.ID)
-	if err != nil {
-		return err
-	}
-	sendErr := sendMessage(c.conn, request)
-	if sendErr != nil {
-		return sendErr
-	}
-	log.Info("Requesting winners...")
+// func (c *Client) askWinners() error {
+// 	request, err := getWinnersRequest(c.config.ID)
+// 	if err != nil {
+// 		return err
+// 	}
+// 	sendErr := sendMessage(c.conn, request)
+// 	if sendErr != nil {
+// 		return sendErr
+// 	}
+// 	log.Info("Requesting winners...")
 
-	return nil
-}
+// 	return nil
+// }

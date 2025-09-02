@@ -2,11 +2,8 @@ package common
 
 import (
 	"bufio"
-	"fmt"
 	"io"
-	"net"
 	"os"
-	"strconv"
 	"strings"
 )
 
@@ -102,8 +99,8 @@ func serializeBatch(batch []byte, isLastBatch bool) []byte {
 }
 
 // Reads the response from the server
-func getResponseOpCode(conn net.Conn) (byte, error) {
-	return bufio.NewReader(conn).ReadByte()
+func getResponseOpCode(r *bufio.Reader) (byte, error) {
+	return bufio.NewReader(r).ReadByte()
 }
 
 // func getResponse(conn net.Conn) ([]byte, error) {
@@ -119,10 +116,40 @@ func getBetFile(id string) (*os.File, error) {
 	return file, nil
 }
 
-func getWinnersRequest(id string) ([]byte, error) {
-	n, err := strconv.ParseUint(id, 10, 8)
-	if err != nil {
-		return nil, &ProtocolError{Message: fmt.Sprintf("Client ID %v is not valid", id)}
+//	func getWinnersRequest(id string) ([]byte, error) {
+//		n, err := strconv.ParseUint(id, 10, 8)
+//		if err != nil {
+//			return nil, &ProtocolError{Message: fmt.Sprintf("Client ID %v is not valid", id)}
+//		}
+//		return []byte{byte(OC_ASK_WINNERS), byte(n)}, nil
+//	}
+
+func parseWinnersResponse(r *bufio.Reader) (int, error) {
+	totalLenBuf := make([]byte, 2)
+	log.Infof("...Reading total winners length... ", len(totalLenBuf))
+	if _, err := io.ReadFull(r, totalLenBuf); err != nil {
+		return 0, err
 	}
-	return []byte{byte(OC_ASK_WINNERS), byte(n)}, nil
+
+	totalLen := int(totalLenBuf[0])<<8 | int(totalLenBuf[1])
+
+	log.Info("...Total winners to read: ", totalLen)
+	totalWinners := 0
+	totalRead := 0
+	for totalRead < totalLen {
+		// Read DNI header
+		dniLenBuf := make([]byte, 1)
+		if _, err := io.ReadFull(r, dniLenBuf); err != nil {
+			return totalWinners, err
+		}
+		dniBuf := make([]byte, int(dniLenBuf[0]))
+		if _, err := io.ReadFull(r, dniBuf); err != nil {
+			return totalWinners, err
+		}
+		log.Infof("action: ganador | dni: %s.", string(dniBuf))
+		totalWinners++
+		totalRead += 1 + int(dniLenBuf[0])
+	}
+
+	return totalWinners, nil
 }

@@ -3,8 +3,7 @@ import socket
 import logging
 
 from common.utils import store_bets, load_bets, has_won
-from common.bet_protocol import read_from_socket, ProtocolError, send_ack, send_nack, handle_batch, send_winners
-from common.protocol_utils import getAgency
+from common.bet_protocol import ProtocolError, send_ack, send_nack, read_bets_from_socket, send_winners
 
 class Server:
     def __init__(self, port, listen_backlog):
@@ -47,23 +46,41 @@ class Server:
         If a problem arises in the communication with the client, the
         client socket will also be closed
         """
-        print("Client connected")
+
         while True:
             try:
-                # queda bloqueado escuchando del cliente. Nunca va a poder manejar varios a la vez
-                is_batch, op_code = read_from_socket(client_sock)
-                if is_batch:
-                    print("Recibi batch")
-                    self.receive_batches(op_code, client_sock)
-                else:
-                    print("Recibi request winners")
-                    self.receive_request_winners(client_sock)
-            except Exception:
-                client_sock.close()
-                break
+                bets, more_batchs_coming, agency = read_bets_from_socket(client_sock)
+                addr = client_sock.getpeername()
+                
+                store_bets(bets)
+                send_ack(client_sock)
+                logging.info(f'action: send_message | result: success | ip: {addr[0]}')
+                
+                if not more_batchs_coming and agency is not None:
+                    self.clients_sending -= 1
+                    if self.clients_sending == 0:
+                        # notify all clients waiting for winners
+                        all_winners = get_winners()
+                        for act_agency, sock in self.clients_waiting_winners.items():
+                            print("Notifying winners to agency", act_agency)
+                            winners = all_winners.get(act_agency, [])
+                            send_winners(sock, winners)
+                            sock.close()
+                            print("-Done winners to agency", act_agency)
 
-        # close connection if it wasn't closed yet. If it was closed, nothing happens
-        client_sock.close()
+                    else:
+                        self.clients_waiting_winners[agency] = client_sock
+                    break
+
+            except OSError as e:
+                logging.error(f"action: receive_message | result: fail | error: {e}")
+                break
+            
+            except ProtocolError as e:
+                send_nack(client_sock)
+                break
+                #logging.error(f"action: receive_bet_message | result: fail | error: {e}")
+            
             
     def __accept_new_connection(self):
         """
@@ -88,65 +105,10 @@ class Server:
         self.close()
         logging.debug(f"action: shutdown | result: success | signal: {signum}")
 
-    def receive_batches(self, op_code, addr, client_sock):
-        while True:
-            try:
-                bets, more_batchs_coming = handle_batch(client_sock, op_code)
-                store_bets(bets)
-                print("Stored bets & sent ack")
-                send_ack(client_sock)
-
-                addr = client_sock.getpeername()
-                logging.info(f'action: send_message | result: success | ip: {addr[0]}')
-                
-                if not more_batchs_coming:
-                    self.clients_sending -= 1
-                    if self.clients_sending == 0:
-                        logging.info("action: sorteo | result: success")
-                        self.send_winners_to_waiting_clients()
-                    return
-                
-            except OSError as e:
-
-                logging.error(f"action: receive_message | result: fail | error: {e}")
-                return
-            
-            except ProtocolError as e:
-                send_nack(client_sock)
-                return
-            
-    def receive_request_winners(self, client_sock):
-        try:
-            agency = getAgency(client_sock)
-        except ProtocolError as e:
-            send_nack(client_sock)
-            return
-
-        if self.clients_sending == 0:
-            winners = self.get_winners(agency)
-            send_winners(client_sock, winners)
-        else:
-            addr = client_sock.getpeername()
-            self.clients_waiting_winners[agency] = addr[0]
-            client_sock.close() 
-
-    def send_winners_to_waiting_clients(self):
-        for agency, ip in self.clients_waiting_winners.items:
-            winners = self.get_winners(agency)
-            client_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            try:
-                send_winners(client_sock, winners)
-            except OSError as e:
-                logging.error(f"action: send_winners | result: fail | error: {e}")
-            finally:
-                client_sock.close()
-
-    def get_winners(agency):
-        bets = load_bets()
-        winners = []
-        for bet in bets:
-            if bet.agency == agency and has_won(bet):
-                winners.append(bet.document)
-        return winners
-        
-    
+def get_winners():
+    bets = load_bets()
+    winners = {}
+    for bet in bets:
+        if has_won(bet):
+            winners[bet.agency] = winners.get(bet.agency, []) + [bet.document]
+    return winners
