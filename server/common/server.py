@@ -2,8 +2,9 @@ import signal
 import socket
 import logging
 
-from common.utils import store_bets
-from common.bet_protocol import read_bets_from_socket, ProtocolError, send_ack, send_nack
+from common.utils import store_bets, load_bets, has_won
+from common.bet_protocol import read_from_socket, ProtocolError, send_ack, send_nack, handle_batch, send_winners
+from common.protocol_utils import getAgency
 
 class Server:
     def __init__(self, port, listen_backlog):
@@ -11,6 +12,8 @@ class Server:
         self._server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self._server_socket.bind(('', port))
         self._server_socket.listen(listen_backlog)
+        self.clients_sending = listen_backlog # no se si es esto pero mientras, TODO
+        self.clients_waiting_winners = {}
         self._running = True
 
     def run(self):
@@ -44,28 +47,24 @@ class Server:
         If a problem arises in the communication with the client, the
         client socket will also be closed
         """
-        more_batchs_coming = True
-        while more_batchs_coming:
+        print("Client connected")
+        while True:
             try:
-                bets, more_batchs_coming = read_bets_from_socket(client_sock)
-                addr = client_sock.getpeername()
-                store_bets(bets)
-                send_ack(client_sock)
-                logging.info(f'action: send_message | result: success | ip: {addr[0]}')
-                if not more_batchs_coming:
-                    break
+                # queda bloqueado escuchando del cliente. Nunca va a poder manejar varios a la vez
+                is_batch, op_code = read_from_socket(client_sock)
+                if is_batch:
+                    print("Recibi batch")
+                    self.receive_batches(op_code, client_sock)
+                else:
+                    print("Recibi request winners")
+                    self.receive_request_winners(client_sock)
+            except Exception:
+                client_sock.close()
+                break
 
-            except OSError as e:
-                logging.error(f"action: receive_message | result: fail | error: {e}")
-                break
-            
-            except ProtocolError as e:
-                send_nack(client_sock)
-                break
-                #logging.error(f"action: receive_bet_message | result: fail | error: {e}")
-            
+        # close connection if it wasn't closed yet. If it was closed, nothing happens
         client_sock.close()
-
+            
     def __accept_new_connection(self):
         """
         Accept new connections
@@ -88,4 +87,56 @@ class Server:
         self._running = False
         self.close()
         logging.debug(f"action: shutdown | result: success | signal: {signum}")
+
+    def receive_batches(self, op_code, addr, client_sock):
+        addr = client_sock.getpeername()
+        while True:
+            try:
+                bets, more_batchs_coming = handle_batch(client_sock, op_code)
+                store_bets(bets)
+                print("Stored bets & sent ack")
+                send_ack(client_sock)
+                logging.info(f'action: send_message | result: success | ip: {addr[0]}')
+                if not more_batchs_coming:
+                    self.clients_sending -= 1
+                    if self.clients_sending == 0:
+                        logging.info("action: sorteo | result: success")
+                        self.send_winners_to_waiting_clients()
+                        
+                    return
+            except OSError as e:
+                logging.error(f"action: receive_message | result: fail | error: {e}")
+                return
+            except ProtocolError as e:
+                send_nack(client_sock)
+                return
+            
+    def receive_request_winners(self, client_sock):
+        try:
+            agency = getAgency(client_sock)
+        except ProtocolError as e:
+            send_nack(client_sock)
+            return
+
+        winners = self.get_winners(agency)
+        send_winners(client_sock, winners)
+
+    def send_winners_to_waiting_clients(self):
+        for client_sock, agency in self.clients_waiting_winners.items:
+            winners = self.get_winners(agency)
+            try:
+                send_winners(client_sock, winners)
+            except OSError as e:
+                logging.error(f"action: send_winners | result: fail | error: {e}")
+            finally:
+                client_sock.close()
+
+    def get_winners(agency):
+        bets = load_bets()
+        winners = []
+        for bet in bets:
+            if bet.agency == agency and has_won(bet):
+                winners.append(bet.document)
+        return winners
+        
     

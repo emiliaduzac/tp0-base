@@ -287,3 +287,24 @@ De esta forma, se escaló de manera simple el protocolo implementado en el ejerc
 El servidor sigue respondiendo de la misma manera, mismo protocolo al ejercicio anterior.
 
 Para obtener las apuestas, el servidor leerá linea por linea el archivo que le corresponda, montado a través de un volumen. Al leer las apuestas, irá formando los batches. Una vez completado un batch (ya sea porque se llegó a la `maxAmount` de apuestas o a los 8kB), lo enviará y esperará la respuesta (confirmación) del servidor antes de seguir enviando el resto de batches. Una vez enviadas todas las apuestas (fin del archivo), puede cerrar la conexión.
+
+### Ejercicio N°7:
+
+El cliente debe notificar al servidor para:
+1. Enviarle las apuestas
+2. Notificarle que finalizó con el envío de apuestas
+3. Pedirle ganadores
+
+En el ejercicio anterior, mi protocolo ya envíaba todas las apuestas y al enviar la última, le notificaba al servidor que ya no habían más apuestas a través de un OpCode indicado en el primer byte.
+Por eso, para este ejercicio, solo debí agregar el mensaje que solicite ganadores. Lo hice indicando un nuevo OpCode (byte = 2) en el primer byte, donde se indicadaba si era el último batch o no para el mensaje de envío de apuestas. Por último, el cliente debe indicar su agencia para poder solicitar los ganadores de dicha agencia solamente. Para eso, el mensaje de pedido de ganadores indica en su segundo byte, la agencia del cliente. De esta forma:
+
+[Mensaje AskWinners]
+
+Así, al recibir un mensaje el servidor puede validar de que tipo es solo con leer su primer byte.
+Si dicho byte indica apuestas (byte = 0), se maneja igual que antes: se leen los batches hasta finalizar (recibir un mensaje con byte = 1). Al finalizar los batches, se descuenta un cliente al contador de clientes pendientes que tiene el servidor en su estructura.
+Al recibir un pedido de ganadores, lo primero que hace el servidor es verificar si todos los clientes ya han enviado todos las apuestas. Si ese es el caso, procede a contestar. Si no, anota al cliente en la espera, marcando su IP en un diccionario que mantiene la estructura del servidor.
+Cuando reciba el mensaje de último batch, ademas de lo mencionado anteriormente, verificará si ese era el último cliente pendiente. De esta forma, si ya no queda ningún cliente por mandar apuestas y había otros clientes en espera por saber los ganadores, puede contestarles.
+
+Para indicar los ganadores, se agrega un OpCode a la respuesta: 0 indica ACK, 1 indica NACK y 2 indica mensaje de ganadores. El siguiente byte indicara la cantidad de bytes dedicada al siguiente DNI ganador, seguido de dicho DNI. Luego, otro indicador de la cantidad de bytes para el siguiente DNI y así sucesivamente. A pesar de que la mayoría de los DNIs tendrán la misma longitud en bytes, es más seguro indicar su longitud para cubrir todos los casos (DNIs extranjeros por ejemplo). Por otro lado, esto podría agregar un overhead al mensaje, pero a su vez mantiene la coherencia y prolijidad con el resto del protocolo.
+
+[Mensaje ResponseWinners]

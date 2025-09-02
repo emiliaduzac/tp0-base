@@ -1,3 +1,21 @@
+from enum import Enum
+
+IS_LAST_SIZE = 1
+BATCH_HEADER_SIZE = 2
+HEADER_SIZE = 6
+TOTAL_FIELDS_BET = 6
+MORE_BATCHS_COMING = 0
+
+class OpCodeResp(Enum):
+    OC_ACK = 0x00
+    OC_NACK = 0x01
+    OC_WINNERS = 0x02
+
+class OpCodeReq(Enum):
+    OC_MORE_BATCHS = 0
+    OC_LAST_BATCH = 1
+    OC_ASK_WINNERS = 2
+
 def read_n_bytes(client_sock, n):
     """
     Reads exactly n bytes from a socket avoiding short reads
@@ -10,7 +28,7 @@ def read_n_bytes(client_sock, n):
         data.extend(packet)
     return data
 
-def send_all(client_sock, msg):
+def send_all_bytes(client_sock, msg):
     """
     Send data to a socket avoiding short writes
     """
@@ -21,3 +39,9 @@ def send_all(client_sock, msg):
 
 class ProtocolError(Exception):
     """ Custom exception for protocol errors """
+
+def getAgency(client_sock):
+    ag = read_n_bytes(client_sock, 1)
+    if ag is None:
+        raise ProtocolError("Fail to read agency from socket")
+    return int(ag[0])

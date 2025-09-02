@@ -3,6 +3,7 @@ package common
 import (
 	"bufio"
 	"context"
+	"fmt"
 	"io"
 	"net"
 	"os/signal"
@@ -83,6 +84,33 @@ func (c *Client) StartClientLoop() {
 
 	// Send all bets from file
 	c.sendBets()
+
+	// Ask for winners
+	err := c.askWinners()
+	if err == nil {
+		_, readErr := getResponseOpCode(c.conn)
+		if readErr != nil {
+			log.Errorf("action: receive_message | result: fail | client_id: %v | error: %v",
+				c.config.ID,
+				readErr,
+			)
+			return
+		}
+
+		res, readErr := getResponseOpCode(c.conn)
+		if readErr != nil {
+			log.Errorf("action: receive_message | result: fail | client_id: %v | error: %v",
+				c.config.ID,
+				readErr,
+			)
+			return
+		}
+
+		if res == byte(OC_WINNERS) {
+			cant := 0
+			log.Infof("action: consulta_ganadores | result: success | cant_ganadores: %d.", cant)
+		}
+	}
 }
 
 func (c *Client) sendBets() error {
@@ -103,13 +131,14 @@ func (c *Client) sendBets() error {
 		batch, lastBet, err := getBetBatchToSend(reader, c.config, buffer)
 
 		// Send the batch to the server
+		fmt.Printf("Sending batch of size %d\n", len(batch))
 		sendErr := sendMessage(c.conn, batch)
 		if sendErr != nil {
 			break
 		}
 
 		// Wait for server response to ensure that the message was received and keep sending
-		_, readErr := getResponse(c.conn)
+		_, readErr := getResponseOpCode(c.conn)
 		if readErr != nil {
 			log.Errorf("action: receive_message | result: fail | client_id: %v | error: %v",
 				c.config.ID,
@@ -133,5 +162,19 @@ func (c *Client) sendBets() error {
 	}
 
 	time.Sleep(c.config.LoopPeriod)
+	return nil
+}
+
+func (c *Client) askWinners() error {
+	request, err := getWinnersRequest(c.config.ID)
+	if err != nil {
+		return err
+	}
+	sendErr := sendMessage(c.conn, request)
+	if sendErr != nil {
+		return sendErr
+	}
+	log.Info("Requesting winners...")
+
 	return nil
 }

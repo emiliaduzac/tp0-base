@@ -2,15 +2,33 @@ package common
 
 import (
 	"bufio"
+	"fmt"
 	"io"
 	"net"
 	"os"
+	"strconv"
 	"strings"
 )
 
 const BATCH_HEADER = 3
 const BET_HEADER = 6
 const MAX_BATCH_SIZE = 8192
+
+type OpCodeReq byte
+
+const (
+	OC_MORE_BATCHS OpCodeReq = 0
+	OC_LAST_BATCH  OpCodeReq = 1
+	OC_ASK_WINNERS OpCodeReq = 2
+)
+
+type OpCodeRes byte
+
+const (
+	OC_ACK     OpCodeRes = 0
+	OC_NACK    OpCodeRes = 1
+	OC_WINNERS OpCodeRes = 2
+)
 
 type ProtocolError struct {
 	Message string
@@ -73,9 +91,9 @@ func serializeBatch(batch []byte, isLastBatch bool) []byte {
 	lenBatch := len(batch)
 
 	betsBatch := make([]byte, lenBatch+(BATCH_HEADER))
-	betsBatch[0] = byte(0)
+	betsBatch[0] = byte(OC_MORE_BATCHS)
 	if isLastBatch {
-		betsBatch[0] = 1
+		betsBatch[0] = byte(OC_LAST_BATCH)
 	}
 	betsBatch[1] = byte(lenBatch >> 8)
 	betsBatch[2] = byte(lenBatch & 0x00FF)
@@ -84,9 +102,13 @@ func serializeBatch(batch []byte, isLastBatch bool) []byte {
 }
 
 // Reads the response from the server
-func getResponse(conn net.Conn) (byte, error) {
+func getResponseOpCode(conn net.Conn) (byte, error) {
 	return bufio.NewReader(conn).ReadByte()
 }
+
+// func getResponse(conn net.Conn) ([]byte, error) {
+//
+// }
 
 // Opens the client's csv file of bets
 func getBetFile(id string) (*os.File, error) {
@@ -95,4 +117,12 @@ func getBetFile(id string) (*os.File, error) {
 		return nil, err
 	}
 	return file, nil
+}
+
+func getWinnersRequest(id string) ([]byte, error) {
+	n, err := strconv.ParseUint(id, 10, 8)
+	if err != nil {
+		return nil, &ProtocolError{Message: fmt.Sprintf("Client ID %v is not valid", id)}
+	}
+	return []byte{byte(OC_ASK_WINNERS), byte(n)}, nil
 }
