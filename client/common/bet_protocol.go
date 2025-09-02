@@ -8,9 +8,7 @@ import (
 	"strings"
 )
 
-const IS_LAST_SIZE = 1
-const BATCH_HEADER_SIZE = 2
-const BATCH_HEADER = IS_LAST_SIZE + BATCH_HEADER_SIZE
+const BATCH_HEADER = 3
 const BET_HEADER = 6
 const MAX_BATCH_SIZE = 8192
 

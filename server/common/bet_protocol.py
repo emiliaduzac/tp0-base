@@ -6,6 +6,7 @@ IS_LAST_SIZE = 1
 BATCH_HEADER_SIZE = 2
 HEADER_SIZE = 6
 TOTAL_FIELDS_BET = 6
+MORE_BATCHS_COMING = 0
 
 def read_bets_from_socket(client_sock):
         """
@@ -22,7 +23,7 @@ def read_bets_from_socket(client_sock):
 
         try:
             # Read if its the last batch (1 byte)
-            more_batchs_coming = read_n_bytes(client_sock, IS_LAST_SIZE)[0] == 0
+            more_batchs_coming = read_n_bytes(client_sock, IS_LAST_SIZE)[0] == MORE_BATCHS_COMING
             # Read the length of the incoming batch (2 bytes)
             batch_len = read_n_bytes(client_sock, BATCH_HEADER_SIZE)
             length = int(batch_len[0])<<8 | int(batch_len[1])

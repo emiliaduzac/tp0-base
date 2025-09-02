@@ -263,10 +263,27 @@ El cliente genera una estructura de tipo `BetPacket` para representar el mensaje
 
 Para enviarlos a través del socket TCP, se codifican a bytes siguiendo el orden indicado por la estructura `BetPacket`. De esta forma, el servidor sabe como decodifcarlo para leer correctamente la apuesta.
 
-![Mensaje BetPacket](doc_images/bet_message.png)
+![Mensaje BetPacket](doc_images/ej5_bet_message.png)
 
 #### Servidor
 El servidor envía un mensaje de confirmación indicando la correcta recepción. Dado que para el cliente solo es necesario recibir un mensaje para tener confirmación, basta con que el servidor envíe un byte. 
 Un 0 indica que el mensaje fue recibido y procesado correctamente, un 1 indica un error.
 
 ![Mensaje ACK](doc_images/ack_message.png)
+
+### Ejercicio N°6:
+Para este ejercicio se debía agregar un cambio principal: el cliente ya no envía más una sola apuesta, sino varias, las cuales lee de un archivo.
+
+Para enviarlas al servidor, había que enviar las apuestas en batches, controlando que no excedan la cantidad estipulada por `maxAmount` ni 8kB.
+
+En el ejercicio anterior, el protocolo de comunicación solo contemplaba una apuesta por mensaje, por lo que no era posible saber cuantas bets leer en total ni cuantos batches había que esperar de un mismo cliente. Por esta razón, modifiqué mi protocolo al siguiente:
+
+![Mensaje BetPacket](doc_images/ej6_bet_message.png)
+
+Ahora se incluye 1 byte que funciona como flag, indicando si quedan más batches o es el último (0=quedan más batches por leer, 1=último batch). Luego, se incluyen 2 bytes para indicar el largo total del batch actual. De esta forma, el servidor sabe cuantos bytes debería leer del socket. Una vez leídos estos primeros 3 bytes, el protocolo vuelve a ser el anterior: los siguientes 6 bytes indicarán las longitudes de cada campo de una apuesta y con eso leerá la apuesta. Le seguirán 6 bytes indicando las longitudes de la siguiente apuesta, dado que ahora se pueden enviar varias, y así sucesivamente.
+
+De esta forma, se escaló de manera simple el protocolo implementado en el ejercicio anterior.
+
+El servidor sigue respondiendo de la misma manera, mismo protocolo al ejercicio anterior.
+
+Para obtener las apuestas, el servidor leerá linea por linea el archivo que le corresponda, montado a través de un volumen. Al leer las apuestas, irá formando los batches. Una vez completado un batch (ya sea porque se llegó a la `maxAmount` de apuestas o a los 8kB), lo enviará y esperará la respuesta (confirmación) del servidor antes de seguir enviando el resto de batches. Una vez enviadas todas las apuestas (fin del archivo), puede cerrar la conexión.
