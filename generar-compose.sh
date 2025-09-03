@@ -12,8 +12,24 @@ else
   echo "Using defaults: "$OUTFILE" with "$NCLIENTS" clients"
 fi
 
-# use the base compose
-cat docker-compose-base.yaml > "$OUTFILE"
+: > "$OUTFILE"
+
+# base of the compose
+cat <<EOF >> "$OUTFILE"
+name: tp0
+services:
+  server:
+    container_name: server
+    image: server:latest
+    entrypoint: python3 /main.py
+    environment:
+      - PYTHONUNBUFFERED=1
+      - CLIENT_AMOUNT=${NCLIENTS} 
+    networks:
+      - testing_net
+    volumes:
+      - ./server/config.ini:/config.ini
+EOF
 
 # add the clients
 for i in $(seq 1 "$NCLIENTS"); do

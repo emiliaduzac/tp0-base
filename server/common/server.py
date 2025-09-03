@@ -6,12 +6,12 @@ from common.utils import store_bets, load_bets, has_won
 from common.bet_protocol import ProtocolError, send_ack, send_nack, read_bets_from_socket, send_winners
 
 class Server:
-    def __init__(self, port, listen_backlog):
+    def __init__(self, port, listen_backlog, total_clients):
         # Initialize server socket
         self._server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self._server_socket.bind(('', port))
         self._server_socket.listen(listen_backlog)
-        self.clients_sending = listen_backlog # no se si es esto pero mientras, TODO
+        self.clients_sending = int(total_clients)
         self.clients_waiting_winners = {}
         self._running = True
 
@@ -59,6 +59,8 @@ class Server:
                 if not more_batchs_coming and agency is not None:
                     self.clients_sending -= 1
                     self.clients_waiting_winners[agency] = client_sock
+                    logging.info(f"action: sorteo | result: success")
+
                     if self.clients_sending == 0:
                         # notify all clients waiting for winners
                         all_winners = get_winners()

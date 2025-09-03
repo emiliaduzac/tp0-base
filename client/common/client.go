@@ -165,7 +165,7 @@ func (c *Client) sendBets(connReader *bufio.Reader) error {
 		}
 	}
 
-	time.Sleep(c.config.LoopPeriod)
+	//time.Sleep(c.config.LoopPeriod)
 	return nil
 }
 
