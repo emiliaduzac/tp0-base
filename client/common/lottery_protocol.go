@@ -8,33 +8,6 @@ import (
 	"strings"
 )
 
-const BATCH_HEADER = 3
-const BET_HEADER = 6
-const MAX_BATCH_SIZE = 8192
-
-type OpCodeRequest byte
-
-const (
-	OC_BATCHS OpCodeRequest = 0
-	OC_END    OpCodeRequest = 1
-)
-
-type OpCodeResponse byte
-
-const (
-	OC_ACK     OpCodeResponse = 0
-	OC_NACK    OpCodeResponse = 1
-	OC_WINNERS OpCodeResponse = 2
-)
-
-type ProtocolError struct {
-	Message string
-}
-
-func (e *ProtocolError) Error() string {
-	return e.Message
-}
-
 // Reads the client's csv file and returns a batch of bets to be sent.
 // Receives: a bufio.Reader to read the file line by line and the client configuration
 // Returns: a slice of bytes with the serialized batch, an error if something went wrong
