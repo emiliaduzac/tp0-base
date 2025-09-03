@@ -85,18 +85,23 @@ func (c *Client) StartClient() {
 
 	// Send all bets from file
 	c.sendBets(reader)
+	c.sendEndMessage()
 
 	res, readErr := getResponseOpCode(reader)
-	if readErr != nil {
+	if readErr != nil || res == byte(OC_NACK) {
 		log.Errorf("action: receive_message | result: fail | client_id: %v | error: %v",
 			c.config.ID,
 			readErr,
 		)
 		return
 	}
+
 	if res == byte(OC_WINNERS) {
 		reader := bufio.NewReader(reader)
-		cantWinners, _ := parseWinnersResponse(reader)
+		cantWinners, parseErr := parseWinnersResponse(reader)
+		if parseErr != nil {
+			log.Infof("action: consulta_ganadores | result: fail | cant_ganadores: %d", cantWinners)
+		}
 		log.Infof("action: consulta_ganadores | result: success | cant_ganadores: %d", cantWinners)
 	}
 }
@@ -150,9 +155,10 @@ func (c *Client) sendBets(connReader *bufio.Reader) error {
 			buffer = make([]byte, 0, max_payload_size)
 		}
 	}
-
-	endMsg := getEndMessage(c.config.ID)
-	log.Infof("     Envio END como string: %s", endMsg)
-	_ = sendMessage(c.conn, endMsg)
 	return nil
+}
+
+func (c *Client) sendEndMessage() error {
+	endMsg := getEndMessage(c.config.ID)
+	return sendMessage(c.conn, endMsg)
 }

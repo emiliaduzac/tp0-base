@@ -12,7 +12,6 @@ def read_bets_from_socket(client_sock):
         """
         total_read = 0
         bets = []
-        ok_bets = 0
         status = "success"
 
         try:
@@ -41,10 +40,9 @@ def read_bets_from_socket(client_sock):
 
             bets.append(Bet(bet_fields[0], bet_fields[1], bet_fields[2], bet_fields[3], bet_fields[4], bet_fields[5]))
             total_read += HEADER_SIZE + sum(fields_length)
-            ok_bets += 1
 
         if len(bets) > 0:
-            logging.info(f'action: apuesta_recibida | result: {status} | cantidad: {ok_bets}')
+            logging.info(f'action: apuesta_recibida | result: {status} | cantidad: {len(bets)}')
         return bets
 
 def read_single_bet(fields_length, client_sock):

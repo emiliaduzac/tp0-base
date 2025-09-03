@@ -11,21 +11,20 @@ import (
 const BATCH_HEADER = 3
 const BET_HEADER = 6
 const MAX_BATCH_SIZE = 8192
-const END_OF_BATCHS = 0
 
-type OpCodeReq byte
+type OpCodeRequest byte
 
 const (
-	OC_BATCHS OpCodeReq = 0
-	OC_END    OpCodeReq = 1
+	OC_BATCHS OpCodeRequest = 0
+	OC_END    OpCodeRequest = 1
 )
 
-type OpCodeRes byte
+type OpCodeResponse byte
 
 const (
-	OC_ACK     OpCodeRes = 0
-	OC_NACK    OpCodeRes = 1
-	OC_WINNERS OpCodeRes = 2
+	OC_ACK     OpCodeResponse = 0
+	OC_NACK    OpCodeResponse = 1
+	OC_WINNERS OpCodeResponse = 2
 )
 
 type ProtocolError struct {
@@ -89,18 +88,19 @@ func getBetBatchToSend(reader *bufio.Reader, config ClientConfig, batch []byte) 
 // Serialize a batch of bets adding the header
 // Receives: a slice of bytes with the serialized bets and a boolean indicating if its the last batch
 // Returns: a slice of bytes with the serialized batch
-// Header: 1 byte to indicate if it's the last batch (0 no, 1 yes) + 2 bytes for the length of the batch
+// Header: 1 byte to indicate if it a batch message (0) or an end message (1) + 2 bytes for the length of the batch
 func serializeBatch(batch []byte) []byte {
 	lenBatch := len(batch)
 
 	betsBatch := make([]byte, lenBatch+(BATCH_HEADER))
-	betsBatch[0] = byte(OpCodeReq(OC_BATCHS))
+	betsBatch[0] = byte(OpCodeRequest(OC_BATCHS))
 	betsBatch[1] = byte(lenBatch >> 8)
 	betsBatch[2] = byte(lenBatch & 0x00FF)
 	copy(betsBatch[(BATCH_HEADER):], batch)
 	return betsBatch
 }
 
+// Returns an end message to nofity that all batchs were sent
 func getEndMessage(cliID string) []byte {
 	n, _ := strconv.ParseUint(cliID, 10, 8)
 	return []byte{byte(OC_END), byte(n)}
@@ -120,6 +120,7 @@ func getBetFile(id string) (*os.File, error) {
 	return file, nil
 }
 
+// Reads the server's response to find the winners of the lottery.
 func parseWinnersResponse(r *bufio.Reader) (int, error) {
 	totalLenBuf := make([]byte, 2)
 	if _, err := io.ReadFull(r, totalLenBuf); err != nil {
@@ -131,7 +132,6 @@ func parseWinnersResponse(r *bufio.Reader) (int, error) {
 	totalWinners := 0
 	totalRead := 0
 	for totalRead < totalLen {
-		// Read DNI header
 		dniLenBuf := make([]byte, 1)
 		if _, err := io.ReadFull(r, dniLenBuf); err != nil {
 			return totalWinners, err
