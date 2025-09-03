@@ -306,6 +306,14 @@ El mensaje de apuestas sigue manteniendo el mismo formato, pero cambia el signif
     - BetLen: indica el largo total de la apuesta en bytes
     - Bet: apuesta serializada en UTF-8
 
+![Mensaje BetPacket](doc_images/ej7_bet_message.png)
+
+En el caso del mensaje que indica fin de las apuestas:
+- OpCode de tipo de mensaje: será seteado en 1 (mencionado arriba)
+- Agencia: 1 byte para indicar número de agencia
+
+![Mensaje BetPacket](doc_images/end_message.png)
+
 
 El servidor debe:
 1. Aceptar conexiones
