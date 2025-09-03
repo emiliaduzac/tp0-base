@@ -290,27 +290,49 @@ Para obtener las apuestas, el servidor leerá linea por linea el archivo que le 
 
 ### Ejercicio N°7:
 
-El cliente:
+El cliente debe:
 1. Enviarle las apuestas al servidor
 2. Notificarle que finalizó con el envío de apuestas
 3. Esperar los ganadores
 
 En el ejercicio anterior, mi protocolo ya envíaba todas las apuestas y al enviar la última, le notificaba al servidor que ya no habían más apuestas a través de un OpCode indicado en el primer byte que era el último batch.
-Por eso, para este ejercicio, solo debí agregar el mensaje que envíe ganadores del servidor al cliente.
+Inicialmente intenté integrar dicho OpCode como mensaje de finalización, y aprovechar que cada apuesta indicaba el número de agencia para evitar tener que generar otro mensaje de fin. Esto no fue posible ya que no se contemplaba el caso de que el end of file (no más apuestas) se enviara en un batch vacío, es decir: sin más apuestas. En esos casos, no había ninguna apuesta válida por la cual obtener el número de agencia.
+
+Para resolver entonces la consigna, integré un nuevo mensaje de finalización y modifiqué el original de apuestas.
+El mensaje de apuestas sigue manteniendo el mismo formato, pero cambia el significado del primer byte (primer opcode).
+- OpCode de tipo de mensaje: un byte que indica si el mensaje es un batch de apuestas (0) o si es un mensaje que indica el fin de envío (1)
+- BatchLen: indica el largo total del payload en bytes, es decir: de todas las apuestas del batch
+- Payload:
+    - BetLen: indica el largo total de la apuesta en bytes
+    - Bet: apuesta serializada en UTF-8
+
 
 El servidor debe:
-1. Recibir las apuestas de los clientes, enviando un ACK por cada batch válido recibido.
-2. Verificar que todos hayan terminado
-    a. Si no todos terminaron, seguir recibiendo apuestas
-    b. Si todos terminaron, enviar los ganadores a cada cliente
-3. Realizar el sorteo una vez que sea posible y notificar los ganadores
+1. Aceptar conexiones
+2. Recibir mensajes de dichas conexiones
+    a. Si el mensaje inicia con un OpCode de BATCH, lo maneja como corresponda para leer un batch de apuestas
+    b. Si el mensaje inicia con un OpCode de END, lo maneja tal para validar si puede iniciar el sorteo
 
-Para ello, el servidor cuenta con la cantidad total de clientes, definida al generar el compose. Así, a medida que los clientes le notifican que envian el último batch de apuestas (como se menciona arriba), el cliente va guardando los sockets y restando uno a un contador que inicializa con el total de clientes.
-Una vez que dicho contador llegue a cero, quiere decir que todos los clientes han terminado de mandar las apuestas. Por lo tanto, el servidor puede notificarle a cada uno los ganadores de sus agencias.
+> Caso mensaje de apuestas
 
-Para indicar los ganadores, se agrega un OpCode a la respuesta: 0 indica ACK, 1 indica NACK y 2 indica mensaje de ganadores. Los siguientes dos bytes indicaran la longitud total del mensaje (sin headers). Seguido a eso, viene un byte indicando la longitud del primer DNI ganador, seguido de dicho DNI. Luego, la siguiente longitud del DNI y dicho DNi, y así sucesivamente para todos los DNIs ganadores.
-A pesar de que la mayoría de los DNIs tendrán la misma longitud en bytes, es más seguro indicar su longitud para cubrir todos los casos (DNIs extranjeros por ejemplo). Por otro lado, esto podría agregar un overhead al mensaje, pero a su vez mantiene la coherencia y prolijidad con el resto del protocolo.
+En caso de recibir un batch de apuestas, el servidor se encarga de parsearlas siguiendo el protocolo para luego almacenarlas.
 
+> Caso mensaje de fin
+
+En caso de recibir un mensaje que indique el fin de las apuestas por parte de un cliente, el servidor deberá verificar si ya todos los clientes han terminado de enviar sus apuestas.
+En caso de que aún falten clientes, se almacena el socket del cliente actual para notificarle cuando todos hayan terminado.
+En caso de que ya todos los clientes hayan finalizado (es decir: quien envió el FIN actual era el último faltante) podrá notificar a todos los clientes los ganadores de su agencia correspondiente.
+El servidor mantiene el total de los clientes gracias a una variable de entorno agregada al docker-compose. Así, sabe cuantos clientes en total debe esperar antes de realizar el sorteo.
+
+El mensaje indicando los ganadores cumple con el siguiente formato:
 ![Mensaje ResponseWinners](doc_images/winners_message.png)
 
-Nuevamente, al igual que el mensaje de apuestas, los headers son bytes. 1 byte para indicar que el mensaje es de notificación de ganadores y 2 bytes para indicar la longitud total del payload en big-endian. Además, los DNIs del payload se codifican a UTF-8 mientras que sus longitudes también son un byte.
+- Opcode indicando si: es ACK, NACK o GANADORES (byte seteado en 2). Luego explicaré como se ven afectados el ACK y NACK por este agregado.
+- PayloadLen: 2 bytes indicando la longitud del payload, que incluye los DNIs ganadores
+- Payload:
+    - DNI len: 1 byte para indicar la longitud del DNI
+    - DNI: DNI en UTF-8
+
+A pesar de que la mayoría de los DNIs tendrán la misma longitud en bytes, es más seguro indicar su longitud para cubrir todos los casos (DNIs extranjeros por ejemplo). Por otro lado, esto podría agregar un overhead al mensaje, pero a su vez mantiene la coherencia y prolijidad con el resto del protocolo.
+
+Ahora bien. Al agregar un OpCode para la respuesta, ¿como se modifican los mensajes de ACK y NACK? No lo hacen. Simplemente se envia el OpCode sin body, por lo que el cliente sabe que tipo de mensaje es y como manejarlo solamente con leer el primer byte.

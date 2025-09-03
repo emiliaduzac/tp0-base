@@ -1,4 +1,4 @@
-from common.protocol_utils import read_n_bytes, send_all_bytes, ProtocolError, HEADER_SIZE, END_OF_BATCHS, BATCH_HEADER_SIZE, TOTAL_FIELDS_BET, IS_LAST_SIZE, OpCodeResp
+from common.protocol_utils import read_n_bytes, send_all_bytes, ProtocolError, HEADER_SIZE, BATCH_HEADER_SIZE, TOTAL_FIELDS_BET, OpCodeResp
 from common.utils import Bet
 import logging
 
@@ -46,6 +46,9 @@ def read_bets_from_socket(client_sock):
         return bets
 
 def read_single_bet(fields_length, client_sock):
+    """
+    Reads all necessary fields to complete a bet
+    """
     bet_fields = []
     for i in range(TOTAL_FIELDS_BET):
         field_len = fields_length[i]

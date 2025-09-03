@@ -4,7 +4,7 @@ import logging
 import time
 
 from common.utils import store_bets, load_bets, has_won
-from common.bet_protocol import ProtocolError, send_ack, send_nack, read_bets_from_socket, send_winners, read_n_bytes
+from server.common.lottery_protocol import ProtocolError, send_ack, send_nack, read_bets_from_socket, send_winners, read_n_bytes
 from common.protocol_utils import OpCodeReq
 
 class Server:
@@ -54,16 +54,11 @@ class Server:
                 op_code = read_n_bytes(client_sock, 1)[0]
 
                 if op_code == OpCodeReq.OC_BATCHS.value:
-                    print("Veo mas batches")
                     self.handle_batches(client_sock)
 
                 elif op_code == OpCodeReq.OC_END.value:
-                    print("veo end of file")
                     self.handle_end(client_sock)
                     break
-                        
-                else:
-                    print("veo vualq cosa")
 
             except OSError as e:
                 logging.error(f"action: receive_message | result: fail | error: {e}")
@@ -71,9 +66,8 @@ class Server:
             
             except ProtocolError as e:
                 send_nack(client_sock)
+                logging.error(f"action: receive_message | result: fail | error: {e}")
                 break
-                #logging.error(f"action: receive_bet_message | result: fail | error: {e}")
-        print("salgo del while true de handle conn")
             
     def __accept_new_connection(self):
         """
@@ -82,7 +76,6 @@ class Server:
         Function blocks until a connection to a client is made.
         Then connection created is printed and returned
         """
-
         # Connection arrived
         logging.info('action: accept_connections | result: in_progress')
         c, addr = self._server_socket.accept()
@@ -102,7 +95,6 @@ class Server:
         bets = read_bets_from_socket(client_sock)
         addr = client_sock.getpeername()
 
-        #print(f"recibo bets: {bets}, agency: {agency}")
         if bets != None:
             store_bets(bets)
             send_ack(client_sock)
@@ -110,23 +102,20 @@ class Server:
             
     def handle_end(self, client_sock):
         agency = read_n_bytes(client_sock, 1)[0]
-        print(f"recibo end de agency: {agency}. Me quedan {self.clients_sending-1}")
 
         self.clients_sending -= 1
         self.clients_waiting_winners[agency] = client_sock
 
+        # Verify if all clients sent their bets to find the loterry winners
         if self.clients_sending == 0:
             logging.info(f"action: sorteo | result: success")
-            # notify all clients waiting for winners
             all_winners = get_winners()
+
             for act_agency, sock in self.clients_waiting_winners.items():
                 winners = all_winners.get(int(act_agency), [])
-                print(f"mando {len(winners)} a {act_agency}")
                 send_winners(sock, winners)
                 sock.close()
-                print("ya mnde y cerre sockets")
                 self._running = False
-            print("Devuelvo true")
 
 def get_winners():
     bets = load_bets()
