@@ -344,3 +344,23 @@ El mensaje indicando los ganadores cumple con el siguiente formato:
 A pesar de que la mayoría de los DNIs tendrán la misma longitud en bytes, es más seguro indicar su longitud para cubrir todos los casos (DNIs extranjeros por ejemplo). Por otro lado, esto podría agregar un overhead al mensaje, pero a su vez mantiene la coherencia y prolijidad con el resto del protocolo.
 
 Ahora bien. Al agregar un OpCode para la respuesta, ¿como se modifican los mensajes de ACK y NACK? No lo hacen. Simplemente se envia el OpCode sin body, por lo que el cliente sabe que tipo de mensaje es y como manejarlo solamente con leer el primer byte.
+
+### Ejercicio N°8:
+Para manejar la concurrencia en el servidor decidí elegir el modelo multithreading, a pesar de la limitación que implica el Global Interpreter Lock en python. Este que actúa como un mutex del interprete que impide que múltiples hilos ejecuten bytecode de Python en paralelo, restringiendo el paralelismo real. 
+
+Sin embargo, el sistema actual de lotería no es CPU-intensive:
+- El servidor escucha conexiones de un socket en su hilo principal
+- Por cada conexión establecida, se genera un hilo dedicado a manejarla. Dicho hilo se encarga de la comunicación con el cliente: recibir apuestas por el socket y enviar la confirmación y ganadores -> tareas I/O
+Las tareas de I/O liberan el GIL, mientras que las CPU-intensive lo bloquean. En este caso, las tareas que requieren del CPU son simplemente procesar, almacenar y leer las apuestas, lo cuál no implica ....
+
+A pesar de tener ciertas limitaciones, considero que el GIL no implica un cuello de botella significativo para el caso del ejercicio actual y lo pedido para su funcionamiento.
+
+> Manejo concurrente de clientes de parte del servidor
+
+Como mencioné anteriormente, el servidor crea un hilo nuevo para cada conexión establecida. En el, maneja dicha conexión: recibe las apuestas del cliente, las almacena, envía un ACK y así hasta recibir el mensaje de finalización. Aquí, siguie actuando tal como hacía antes: verifica que el resto de clientes hayan terminado para poder enviar los ganadores. Si no han terminado todos los clientes, almacena el socket del cliente actual y finaliza el hilo. Si ya todos han terminado de enviar sus apuestas, obtiene los ganadores y notifica a todos los clientes utilizando los sockets almacenados anteriormente.
+Para esto, requerí de usar locks para evitar problemas de concurrencia como race conditions o deadlocks. Este mecanismo es utilizado en:
+
+- Lock del archivo de apuestas: cada vez que se quiere almacenar o leer apuestas del archivo, el hilo debe asegurarse que ningún otro hilo está modificando dicho hilo. Para eso, toma el lock que le permite entrar a la sección crítica y ejecutar su operación (escribir o leer del archivo, según el caso). Una vez finalizado, libera el lock para que otro hilo pueda tomarlo.
+- Lock para realizar sorteo: desde el ejercicio 7 el servidor contaba con una variable `_clients_sending` que indicaba cuantos clientes seguían envíando apuestas, que era utilizado para verificar si ya todos habían terminado (`_clients_sending == 0`). Entonces, cada vez que un cliente terminaba de enviar sus apuestas restaba en uno a dicha variable y almacenaba el socket del cliente para poder luego enviarle los ganadores en un diccionario: `_clients_waiting_winners`. Ambas variables deben ser manejadas con una herramienta de concurrencia para evitar que distintos hilos las modifiquen al mismo tiempo. Para ello, utilizo un lock que segura que solo un hilo pueda realizar estas operaciones a la vez. A su vez, en dicha sección crítica también se realiza el chequeo para ver si todos los clientes han terminado y así mandarles los ganadores. 
+
+Gracias a esta herramienta de concurrencia y el uso de hilos, se pudo realizar el manejo concurrente de clientes por parte del servidor.

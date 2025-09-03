@@ -18,7 +18,7 @@ def read_bets_from_socket(client_sock):
             # Read the length of the incoming batch (2 bytes)
             batch_len = read_n_bytes(client_sock, BATCH_HEADER_SIZE)
             length = int(batch_len[0])<<8 | int(batch_len[1])
-        except ProtocolError as e:
+        except ProtocolError:
             raise ProtocolError("Fail to read from socket")
         
         # Read the whole batch

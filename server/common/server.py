@@ -42,6 +42,7 @@ class Server:
                     self._cli_threads.append(t)
 
                 except socket.timeout:
+                    # If timeout occurs, check again if server is still running
                     continue
 
                 except OSError as e:
@@ -51,7 +52,7 @@ class Server:
         finally:
             for t in self._cli_threads:
                 t.join()
-            logging.debug(f"action: join_threads | result: success")  
+            logging.debug("action: join_threads | result: success")  
 
     def __handle_client_connection(self, client_sock):
         """
@@ -74,6 +75,7 @@ class Server:
                 
                 else:
                     # unkown op code
+                    logging.error("action: receive_message | result: fail | error: Unknown message")
                     send_nack(client_sock)
 
             except OSError as e:
@@ -102,13 +104,14 @@ class Server:
 
     def __handle_shutdown(self, signum, frame):
         """ Handle graceful shutdown of the server. """
-        logging.debug(f"action: shutdown | result: in_progress | signal: {signum}")  
+        logging.debug(f"action: shutdown | result: in_progress | signal: {signum}")
         self._running = False
         self._server_socket.close()
-        logging.debug(f"action: close_socket | result: success")  
+        logging.debug("action: close_socket | result: success")  
+
         for t in self._cli_threads:
             t.join()
-        logging.debug(f"action: join_threads | result: success")  
+        logging.debug("action: join_threads | result: success")
         logging.debug(f"action: shutdown | result: success | signal: {signum}")
 
 
@@ -135,7 +138,7 @@ class Server:
 
             # Verify if all clients sent their bets to find the loterry winners
             if self._clients_sending == 0:
-                logging.info(f"action: sorteo | result: success")
+                logging.info("action: sorteo | result: success")
                 all_winners = self.__get_winners()
 
                 for act_agency, sock in self._clients_waiting_winners.items():

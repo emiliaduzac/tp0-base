@@ -21,7 +21,7 @@ def read_n_bytes(client_sock, n):
     while len(data) < n:
         packet = client_sock.recv(n - len(data))
         if not packet:
-            raise ProtocolError(f"Fail to read from socket")
+            raise ProtocolError("Fail to read from socket")
         data.extend(packet)
 
     return data
