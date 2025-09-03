@@ -18,7 +18,6 @@ class Server:
         self._running = True
         self._bets_file_lock = threading.Lock()
         self._winners_lock = threading.Lock()
-        self._all_done_condition = threading.Condition()
 
     def run(self):
         """
@@ -29,8 +28,8 @@ class Server:
         finishes, servers starts to accept new connections again
         """
         # set handlers for graceful shutdown
-        signal.signal(signal.SIGTERM, self.handle_shutdown) # Termination signal
-        signal.signal(signal.SIGINT, self.handle_shutdown) # Interrupt from keyboard
+        signal.signal(signal.SIGTERM, self.__handle_shutdown) # Termination signal
+        signal.signal(signal.SIGINT, self.__handle_shutdown) # Interrupt from keyboard
 
         while self._running:
             try:
@@ -60,12 +59,16 @@ class Server:
                 op_code = read_n_bytes(client_sock, 1)[0]
 
                 if op_code == OpCodeReq.OC_BATCHS.value:
-                    self.handle_batches(client_sock)
+                    self.__handle_batches(client_sock)
 
                 elif op_code == OpCodeReq.OC_END.value:
                     # concu
-                    self.handle_end(client_sock)
+                    self.__handle_end(client_sock)
                     break
+                
+                else:
+                    # unkown op code
+                    send_nack(client_sock)
 
             except OSError as e:
                 logging.error(f"action: receive_message | result: fail | error: {e}")
@@ -89,14 +92,14 @@ class Server:
         logging.info(f'action: accept_connections | result: success | ip: {addr[0]}')
         return c
     
-    def handle_shutdown(self, signum, frame):
+    def __handle_shutdown(self, signum, frame):
         """ Handle graceful shutdown of the server. """
         logging.debug(f"action: shutdown | result: in_progress | signal: {signum}")  
         self._running = False
         self.close()
         logging.debug(f"action: shutdown | result: success | signal: {signum}")
 
-    def handle_batches(self, client_sock):
+    def __handle_batches(self, client_sock):
         """ Handle the reception of a batch of bets from a client. Stores the bets in the bets file. """
         bets = read_bets_from_socket(client_sock)
         addr = client_sock.getpeername()
@@ -107,7 +110,7 @@ class Server:
             send_ack(client_sock)
             logging.info(f'action: send_message | result: success | ip: {addr[0]}')
             
-    def handle_end(self, client_sock):
+    def __handle_end(self, client_sock):
         """ Handle the end of the communication with a client. Checks if all clients are done in order to 
         find the lottery winners and send them to each client. """
         agency = read_n_bytes(client_sock, 1)[0]
@@ -120,14 +123,15 @@ class Server:
             # Verify if all clients sent their bets to find the loterry winners
             if self._clients_sending == 0:
                 logging.info(f"action: sorteo | result: success")
-                all_winners = self.get_winners()
+                all_winners = self.__get_winners()
 
                 for act_agency, sock in self._clients_waiting_winners.items():
                     winners = all_winners.get(int(act_agency), [])
                     send_winners(sock, winners)
                     sock.close()
+                    self._running = False
 
-    def get_winners(self):
+    def __get_winners(self):
         """ Returns a dictionary with the winners of each agency. Takes a lock of the file while reading it. """
         with self._bets_file_lock:
             bets = list(load_bets())
