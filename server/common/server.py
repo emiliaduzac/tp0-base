@@ -18,6 +18,7 @@ class Server:
         self._running = True
         self._bets_file_lock = threading.Lock()
         self._winners_lock = threading.Lock()
+        self._cli_threads = []
 
     def run(self):
         """
@@ -31,20 +32,26 @@ class Server:
         signal.signal(signal.SIGTERM, self.__handle_shutdown) # Termination signal
         signal.signal(signal.SIGINT, self.__handle_shutdown) # Interrupt from keyboard
 
-        while self._running:
-            try:
-                client_sock = self.__accept_new_connection()
-                t = threading.Thread(target=self.__handle_client_connection, args=(client_sock,))
-                t.start()
-                # self.__handle_client_connection(client_sock)
-            except OSError as e:
-                logging.error(f"action: receive_message | result: fail | error: {e}")
-                break
-        t.join()
+        try:
+            self._server_socket.settimeout(1.0)
+            while self._running:
+                try:
+                    client_sock = self.__accept_new_connection()
+                    t = threading.Thread(target=self.__handle_client_connection, args=(client_sock,))
+                    t.start()
+                    self._cli_threads.append(t)
 
-    def close(self):
-        self._server_socket.close()
-        logging.debug(f"action: close_socket | result: success")  
+                except socket.timeout:
+                    continue
+
+                except OSError as e:
+                    logging.error(f"action: receive_message | result: fail | error: {e}")
+                    break
+
+        finally:
+            for t in self._cli_threads:
+                t.join()
+            logging.debug(f"action: join_threads | result: success")  
 
     def __handle_client_connection(self, client_sock):
         """
@@ -62,7 +69,6 @@ class Server:
                     self.__handle_batches(client_sock)
 
                 elif op_code == OpCodeReq.OC_END.value:
-                    # concu
                     self.__handle_end(client_sock)
                     break
                 
@@ -79,6 +85,7 @@ class Server:
                 logging.error(f"action: receive_message | result: fail | error: {e}")
                 break
             
+
     def __accept_new_connection(self):
         """
         Accept new connections
@@ -92,12 +99,18 @@ class Server:
         logging.info(f'action: accept_connections | result: success | ip: {addr[0]}')
         return c
     
+
     def __handle_shutdown(self, signum, frame):
         """ Handle graceful shutdown of the server. """
         logging.debug(f"action: shutdown | result: in_progress | signal: {signum}")  
         self._running = False
-        self.close()
+        self._server_socket.close()
+        logging.debug(f"action: close_socket | result: success")  
+        for t in self._cli_threads:
+            t.join()
+        logging.debug(f"action: join_threads | result: success")  
         logging.debug(f"action: shutdown | result: success | signal: {signum}")
+
 
     def __handle_batches(self, client_sock):
         """ Handle the reception of a batch of bets from a client. Stores the bets in the bets file. """
@@ -110,12 +123,12 @@ class Server:
             send_ack(client_sock)
             logging.info(f'action: send_message | result: success | ip: {addr[0]}')
             
+
     def __handle_end(self, client_sock):
         """ Handle the end of the communication with a client. Checks if all clients are done in order to 
         find the lottery winners and send them to each client. """
         agency = read_n_bytes(client_sock, 1)[0]
 
-        # TO DO: manejar concurrencia en datos compartidos
         with self._winners_lock:
             self._clients_sending -= 1
             self._clients_waiting_winners[agency] = client_sock
@@ -130,6 +143,7 @@ class Server:
                     send_winners(sock, winners)
                     sock.close()
                     self._running = False
+
 
     def __get_winners(self):
         """ Returns a dictionary with the winners of each agency. Takes a lock of the file while reading it. """
