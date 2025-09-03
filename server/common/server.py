@@ -1,6 +1,7 @@
 import signal
 import socket
 import logging
+import time
 
 from common.utils import store_bets, load_bets, has_won
 from common.bet_protocol import ProtocolError, send_ack, send_nack, read_bets_from_socket, send_winners
@@ -59,14 +60,15 @@ class Server:
                 if not more_batchs_coming and agency is not None:
                     self.clients_sending -= 1
                     self.clients_waiting_winners[agency] = client_sock
-                    logging.info(f"action: sorteo | result: success")
 
                     if self.clients_sending == 0:
+                        logging.info(f"action: sorteo | result: success")
                         # notify all clients waiting for winners
                         all_winners = get_winners()
                         for act_agency, sock in self.clients_waiting_winners.items():
                             winners = all_winners.get(int(act_agency), [])
                             send_winners(sock, winners)
+                            time.sleep(0.5)  # slight delay to ensure messages are sent before closing sockets
                             sock.close()
                     break
 

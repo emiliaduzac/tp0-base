@@ -89,7 +89,6 @@ func (c *Client) StartClient() {
 	// Ask for winners
 	//err := c.askWinners()
 	//if err == nil {
-	log.Infof("Starting to wait for winners...")
 	// _, readErr := getResponseOpCode(c.conn)
 	// if readErr != nil {
 	// 	log.Errorf("action: receive_message | result: fail | client_id: %v | error: %v",
@@ -109,7 +108,6 @@ func (c *Client) StartClient() {
 	}
 	if res == byte(OC_WINNERS) {
 		reader := bufio.NewReader(reader)
-		log.Infof("--Reading winners...")
 		cantWinners, _ := parseWinnersResponse(reader)
 		log.Infof("action: consulta_ganadores | result: success | cant_ganadores: %d.", cantWinners)
 	}
@@ -135,7 +133,6 @@ func (c *Client) sendBets(connReader *bufio.Reader) error {
 		batch, lastBet, err := getBetBatchToSend(fileReader, c.config, buffer)
 
 		// Send the batch to the server
-		log.Infof("Sending batch of size %d\n", len(batch))
 		sendErr := sendMessage(c.conn, batch)
 		if sendErr != nil {
 			break

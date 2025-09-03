@@ -126,14 +126,12 @@ func getBetFile(id string) (*os.File, error) {
 
 func parseWinnersResponse(r *bufio.Reader) (int, error) {
 	totalLenBuf := make([]byte, 2)
-	log.Infof("...Reading total winners length... ", len(totalLenBuf))
 	if _, err := io.ReadFull(r, totalLenBuf); err != nil {
 		return 0, err
 	}
 
 	totalLen := int(totalLenBuf[0])<<8 | int(totalLenBuf[1])
 
-	log.Info("...Total winners to read: ", totalLen)
 	totalWinners := 0
 	totalRead := 0
 	for totalRead < totalLen {
@@ -146,7 +144,6 @@ func parseWinnersResponse(r *bufio.Reader) (int, error) {
 		if _, err := io.ReadFull(r, dniBuf); err != nil {
 			return totalWinners, err
 		}
-		log.Infof("action: ganador | dni: %s.", string(dniBuf))
 		totalWinners++
 		totalRead += 1 + int(dniLenBuf[0])
 	}

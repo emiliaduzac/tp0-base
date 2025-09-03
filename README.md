@@ -290,21 +290,27 @@ Para obtener las apuestas, el servidor leerá linea por linea el archivo que le 
 
 ### Ejercicio N°7:
 
-El cliente debe notificar al servidor para:
-1. Enviarle las apuestas
+El cliente:
+1. Enviarle las apuestas al servidor
 2. Notificarle que finalizó con el envío de apuestas
-3. Pedirle ganadores
+3. Esperar los ganadores
 
-En el ejercicio anterior, mi protocolo ya envíaba todas las apuestas y al enviar la última, le notificaba al servidor que ya no habían más apuestas a través de un OpCode indicado en el primer byte.
-Por eso, para este ejercicio, solo debí agregar el mensaje que solicite ganadores. Lo hice indicando un nuevo OpCode (byte = 2) en el primer byte, donde se indicadaba si era el último batch o no para el mensaje de envío de apuestas. Por último, el cliente debe indicar su agencia para poder solicitar los ganadores de dicha agencia solamente. Para eso, el mensaje de pedido de ganadores indica en su segundo byte, la agencia del cliente. De esta forma:
+En el ejercicio anterior, mi protocolo ya envíaba todas las apuestas y al enviar la última, le notificaba al servidor que ya no habían más apuestas a través de un OpCode indicado en el primer byte que era el último batch.
+Por eso, para este ejercicio, solo debí agregar el mensaje que envíe ganadores del servidor al cliente.
 
-[Mensaje AskWinners]
+El servidor debe:
+1. Recibir las apuestas de los clientes, enviando un ACK por cada batch válido recibido.
+2. Verificar que todos hayan terminado
+    a. Si no todos terminaron, seguir recibiendo apuestas
+    b. Si todos terminaron, enviar los ganadores a cada cliente
+3. Realizar el sorteo una vez que sea posible y notificar los ganadores
 
-Así, al recibir un mensaje el servidor puede validar de que tipo es solo con leer su primer byte.
-Si dicho byte indica apuestas (byte = 0), se maneja igual que antes: se leen los batches hasta finalizar (recibir un mensaje con byte = 1). Al finalizar los batches, se descuenta un cliente al contador de clientes pendientes que tiene el servidor en su estructura.
-Al recibir un pedido de ganadores, lo primero que hace el servidor es verificar si todos los clientes ya han enviado todos las apuestas. Si ese es el caso, procede a contestar. Si no, anota al cliente en la espera, marcando su IP en un diccionario que mantiene la estructura del servidor.
-Cuando reciba el mensaje de último batch, ademas de lo mencionado anteriormente, verificará si ese era el último cliente pendiente. De esta forma, si ya no queda ningún cliente por mandar apuestas y había otros clientes en espera por saber los ganadores, puede contestarles.
+Para ello, el servidor cuenta con la cantidad total de clientes, definida al generar el compose. Así, a medida que los clientes le notifican que envian el último batch de apuestas (como se menciona arriba), el cliente va guardando los sockets y restando uno a un contador que inicializa con el total de clientes.
+Una vez que dicho contador llegue a cero, quiere decir que todos los clientes han terminado de mandar las apuestas. Por lo tanto, el servidor puede notificarle a cada uno los ganadores de sus agencias.
 
-Para indicar los ganadores, se agrega un OpCode a la respuesta: 0 indica ACK, 1 indica NACK y 2 indica mensaje de ganadores. El siguiente byte indicara la cantidad de bytes dedicada al siguiente DNI ganador, seguido de dicho DNI. Luego, otro indicador de la cantidad de bytes para el siguiente DNI y así sucesivamente. A pesar de que la mayoría de los DNIs tendrán la misma longitud en bytes, es más seguro indicar su longitud para cubrir todos los casos (DNIs extranjeros por ejemplo). Por otro lado, esto podría agregar un overhead al mensaje, pero a su vez mantiene la coherencia y prolijidad con el resto del protocolo.
+Para indicar los ganadores, se agrega un OpCode a la respuesta: 0 indica ACK, 1 indica NACK y 2 indica mensaje de ganadores. Los siguientes dos bytes indicaran la longitud total del mensaje (sin headers). Seguido a eso, viene un byte indicando la longitud del primer DNI ganador, seguido de dicho DNI. Luego, la siguiente longitud del DNI y dicho DNi, y así sucesivamente para todos los DNIs ganadores.
+A pesar de que la mayoría de los DNIs tendrán la misma longitud en bytes, es más seguro indicar su longitud para cubrir todos los casos (DNIs extranjeros por ejemplo). Por otro lado, esto podría agregar un overhead al mensaje, pero a su vez mantiene la coherencia y prolijidad con el resto del protocolo.
 
-[Mensaje ResponseWinners]
+![Mensaje ResponseWinners](doc_images/winners_message.png)
+
+Nuevamente, al igual que el mensaje de apuestas, los headers son bytes. 1 byte para indicar que el mensaje es de notificación de ganadores y 2 bytes para indicar la longitud total del payload en big-endian. Además, los DNIs del payload se codifican a UTF-8 mientras que sus longitudes también son un byte.
