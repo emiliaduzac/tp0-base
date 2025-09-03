@@ -86,18 +86,6 @@ func (c *Client) StartClient() {
 	// Send all bets from file
 	c.sendBets(reader)
 
-	// Ask for winners
-	//err := c.askWinners()
-	//if err == nil {
-	// _, readErr := getResponseOpCode(c.conn)
-	// if readErr != nil {
-	// 	log.Errorf("action: receive_message | result: fail | client_id: %v | error: %v",
-	// 		c.config.ID,
-	// 		readErr,
-	// 	)
-	// 	return
-	// }
-
 	res, readErr := getResponseOpCode(reader)
 	if readErr != nil {
 		log.Errorf("action: receive_message | result: fail | client_id: %v | error: %v",
@@ -109,10 +97,8 @@ func (c *Client) StartClient() {
 	if res == byte(OC_WINNERS) {
 		reader := bufio.NewReader(reader)
 		cantWinners, _ := parseWinnersResponse(reader)
-		log.Infof("action: consulta_ganadores | result: success | cant_ganadores: %d.", cantWinners)
+		log.Infof("action: consulta_ganadores | result: success | cant_ganadores: %d", cantWinners)
 	}
-	time.Sleep(c.config.LoopPeriod)
-	//}
 }
 
 func (c *Client) sendBets(connReader *bufio.Reader) error {
@@ -131,6 +117,9 @@ func (c *Client) sendBets(connReader *bufio.Reader) error {
 	for {
 		// Get the next batch of bets to send
 		batch, lastBet, err := getBetBatchToSend(fileReader, c.config, buffer)
+		if batch == nil && err == io.EOF {
+			break
+		}
 
 		// Send the batch to the server
 		sendErr := sendMessage(c.conn, batch)
@@ -162,20 +151,8 @@ func (c *Client) sendBets(connReader *bufio.Reader) error {
 		}
 	}
 
-	//time.Sleep(c.config.LoopPeriod)
+	endMsg := getEndMessage(c.config.ID)
+	log.Infof("     Envio END como string: %s", endMsg)
+	_ = sendMessage(c.conn, endMsg)
 	return nil
 }
-
-// func (c *Client) askWinners() error {
-// 	request, err := getWinnersRequest(c.config.ID)
-// 	if err != nil {
-// 		return err
-// 	}
-// 	sendErr := sendMessage(c.conn, request)
-// 	if sendErr != nil {
-// 		return sendErr
-// 	}
-// 	log.Info("Requesting winners...")
-
-// 	return nil
-// }

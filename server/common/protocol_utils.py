@@ -4,17 +4,16 @@ IS_LAST_SIZE = 1
 BATCH_HEADER_SIZE = 2
 HEADER_SIZE = 6
 TOTAL_FIELDS_BET = 6
-MORE_BATCHS_COMING = 0
+END_OF_BATCHS = 0
 
 class OpCodeResp(Enum):
     OC_ACK = 0x00
     OC_NACK = 0x01
     OC_WINNERS = 0x02
 
-# class OpCodeReq(Enum):
-#     OC_MORE_BATCHS = 0
-#     OC_LAST_BATCH = 1
-#     OC_ASK_WINNERS = 2
+class OpCodeReq(Enum):
+    OC_BATCHS = 0
+    OC_END = 1
 
 def read_n_bytes(client_sock, n):
     """

@@ -4,19 +4,20 @@ import (
 	"bufio"
 	"io"
 	"os"
+	"strconv"
 	"strings"
 )
 
 const BATCH_HEADER = 3
 const BET_HEADER = 6
 const MAX_BATCH_SIZE = 8192
+const END_OF_BATCHS = 0
 
 type OpCodeReq byte
 
 const (
-	OC_MORE_BATCHS OpCodeReq = 0
-	OC_LAST_BATCH  OpCodeReq = 1
-	OC_ASK_WINNERS OpCodeReq = 2
+	OC_BATCHS OpCodeReq = 0
+	OC_END    OpCodeReq = 1
 )
 
 type OpCodeRes byte
@@ -45,10 +46,13 @@ func getBetBatchToSend(reader *bufio.Reader, config ClientConfig, batch []byte) 
 	for betsInBatch < config.MaxSizeAmount {
 		line, readErr := reader.ReadString('\n')
 		line = strings.TrimRight(line, "\r\n")
-
 		// If the line is empty and we reached EOF, return what we have.
 		if readErr == io.EOF && line == "" {
-			return serializeBatch(batch, true), nil, readErr
+			log.Infof("Linea vacia y EOF. Mando {%d} apuestas", betsInBatch)
+			if betsInBatch == 0 {
+				return nil, nil, readErr
+			}
+			return serializeBatch(batch), nil, readErr
 		}
 		// If its empty but not EOF, continue
 		if line == "" {
@@ -65,7 +69,7 @@ func getBetBatchToSend(reader *bufio.Reader, config ClientConfig, batch []byte) 
 		// If this last bet didn't fit in the batch, return what we have and the bet to be sent later
 		// in next batch
 		if len(batch)+len(serializedBet) > MAX_BATCH_SIZE {
-			return serializeBatch(batch, false), serializedBet, nil
+			return serializeBatch(batch), serializedBet, nil
 		}
 
 		batch = append(batch, serializedBet...)
@@ -73,39 +77,39 @@ func getBetBatchToSend(reader *bufio.Reader, config ClientConfig, batch []byte) 
 
 		// End of file, return the batch and indicate that its the last one
 		if readErr == io.EOF {
-			return serializeBatch(batch, true), nil, readErr
+			log.Infof("EOF. Mando {%d} apuestas", betsInBatch)
+			return serializeBatch(batch), nil, readErr
 		}
 	}
 
-	return serializeBatch(batch, false), nil, nil
+	log.Infof("Llegue a max bets. Mando {%d} apuestas", betsInBatch)
+	return serializeBatch(batch), nil, nil
 }
 
 // Serialize a batch of bets adding the header
 // Receives: a slice of bytes with the serialized bets and a boolean indicating if its the last batch
 // Returns: a slice of bytes with the serialized batch
 // Header: 1 byte to indicate if it's the last batch (0 no, 1 yes) + 2 bytes for the length of the batch
-func serializeBatch(batch []byte, isLastBatch bool) []byte {
+func serializeBatch(batch []byte) []byte {
 	lenBatch := len(batch)
 
 	betsBatch := make([]byte, lenBatch+(BATCH_HEADER))
-	betsBatch[0] = byte(OC_MORE_BATCHS)
-	if isLastBatch {
-		betsBatch[0] = byte(OC_LAST_BATCH)
-	}
+	betsBatch[0] = byte(OpCodeReq(OC_BATCHS))
 	betsBatch[1] = byte(lenBatch >> 8)
 	betsBatch[2] = byte(lenBatch & 0x00FF)
 	copy(betsBatch[(BATCH_HEADER):], batch)
 	return betsBatch
 }
 
+func getEndMessage(cliID string) []byte {
+	n, _ := strconv.ParseUint(cliID, 10, 8)
+	return []byte{byte(OC_END), byte(n)}
+}
+
 // Reads the response from the server
 func getResponseOpCode(r *bufio.Reader) (byte, error) {
 	return bufio.NewReader(r).ReadByte()
 }
-
-// func getResponse(conn net.Conn) ([]byte, error) {
-//
-// }
 
 // Opens the client's csv file of bets
 func getBetFile(id string) (*os.File, error) {
@@ -115,14 +119,6 @@ func getBetFile(id string) (*os.File, error) {
 	}
 	return file, nil
 }
-
-//	func getWinnersRequest(id string) ([]byte, error) {
-//		n, err := strconv.ParseUint(id, 10, 8)
-//		if err != nil {
-//			return nil, &ProtocolError{Message: fmt.Sprintf("Client ID %v is not valid", id)}
-//		}
-//		return []byte{byte(OC_ASK_WINNERS), byte(n)}, nil
-//	}
 
 func parseWinnersResponse(r *bufio.Reader) (int, error) {
 	totalLenBuf := make([]byte, 2)
