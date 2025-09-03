@@ -47,7 +47,6 @@ func getBetBatchToSend(reader *bufio.Reader, config ClientConfig, batch []byte) 
 		line = strings.TrimRight(line, "\r\n")
 		// If the line is empty and we reached EOF, return what we have.
 		if readErr == io.EOF && line == "" {
-			log.Infof("Linea vacia y EOF. Mando {%d} apuestas", betsInBatch)
 			if betsInBatch == 0 {
 				return nil, nil, readErr
 			}
@@ -76,12 +75,10 @@ func getBetBatchToSend(reader *bufio.Reader, config ClientConfig, batch []byte) 
 
 		// End of file, return the batch and indicate that its the last one
 		if readErr == io.EOF {
-			log.Infof("EOF. Mando {%d} apuestas", betsInBatch)
 			return serializeBatch(batch), nil, readErr
 		}
 	}
 
-	log.Infof("Llegue a max bets. Mando {%d} apuestas", betsInBatch)
 	return serializeBatch(batch), nil, nil
 }
 
