@@ -4,7 +4,7 @@ import logging
 import time
 
 from common.utils import store_bets, load_bets, has_won
-from server.common.lottery_protocol import ProtocolError, send_ack, send_nack, read_bets_from_socket, send_winners, read_n_bytes
+from common.lottery_protocol import ProtocolError, send_ack, send_nack, read_bets_from_socket, send_winners, read_n_bytes
 from common.protocol_utils import OpCodeReq
 
 class Server:
