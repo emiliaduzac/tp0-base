@@ -15,6 +15,7 @@ services:
     container_name: client1
     image: client:latest
     entrypoint: /client
+    env_file: ./env_variables/client1.env
     networks:
       - testing_net
     volumes:
@@ -27,6 +28,7 @@ services:
     container_name: client2
     image: client:latest
     entrypoint: /client
+    env_file: ./env_variables/client2.env
     networks:
       - testing_net
     volumes:
@@ -39,6 +41,7 @@ services:
     container_name: client3
     image: client:latest
     entrypoint: /client
+    env_file: ./env_variables/client3.env
     networks:
       - testing_net
     volumes:
@@ -51,6 +54,7 @@ services:
     container_name: client4
     image: client:latest
     entrypoint: /client
+    env_file: ./env_variables/client4.env
     networks:
       - testing_net
     volumes:
@@ -63,6 +67,7 @@ services:
     container_name: client5
     image: client:latest
     entrypoint: /client
+    env_file: ./env_variables/client5.env
     networks:
       - testing_net
     volumes:

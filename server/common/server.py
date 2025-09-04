@@ -50,8 +50,9 @@ class Server:
                     break
 
         finally:
-            self.__join_threads()
+            self.__clean_resources()
 
+            
     def __handle_client_connection(self, client_sock):
         """
         Read message from a specific client socket and closes the socket
@@ -141,6 +142,7 @@ class Server:
                     winners = all_winners.get(int(act_agency), [])
                     send_winners(sock, winners)
                     sock.close()
+                    logging.debug(f"action: close_connection | result: success | agency: {act_agency}")
                     self._running = False
 
 
@@ -158,4 +160,15 @@ class Server:
     def __join_threads(self):
         for t in self._cli_threads:
             t.join()
-        logging.debug("action: join_threads | result: success")
+        logging.debug("action: join_client_threads | result: success")
+        
+
+    def __clean_resources(self):
+        """ Clean up resources used by the server. """
+        try:
+            self._server_socket.close()
+            logging.debug("action: close_server_socket | result: success")  
+            self.__join_threads()
+
+        except Exception as e:
+            logging.error(f"action: close_resources | result: fail | error: {e}")

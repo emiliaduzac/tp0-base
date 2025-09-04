@@ -112,5 +112,4 @@ func main() {
 
 	client := common.NewClient(clientConfig)
 	client.StartClient()
-	// os.Exit(0)
 }
