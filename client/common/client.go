@@ -95,7 +95,7 @@ func (c *Client) sendBets() error {
 	defer file.Close()
 
 	reader := bufio.NewReader(file)
-	max_payload_size := c.config.MaxBetsAmount - BATCH_HEADER
+	max_payload_size := MAX_BATCH_SIZE - BATCH_HEADER
 	buffer := make([]byte, 0, max_payload_size)
 	for {
 		// Get the next batch of bets to send
