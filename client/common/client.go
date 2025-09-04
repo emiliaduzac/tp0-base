@@ -1,9 +1,10 @@
 package common
 
 import (
-	"context"
 	"net"
+	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
@@ -22,15 +23,18 @@ type ClientConfig struct {
 
 // Client Entity that encapsulates how
 type Client struct {
-	config ClientConfig
-	conn   net.Conn
+	config         ClientConfig
+	conn           net.Conn
+	keepingAlive   bool
+	keepAliveMutex sync.RWMutex
 }
 
 // NewClient Initializes a new client receiving the configuration
 // as a parameter
 func NewClient(config ClientConfig) *Client {
 	client := &Client{
-		config: config,
+		config:       config,
+		keepingAlive: true,
 	}
 	return client
 }
@@ -54,20 +58,12 @@ func (c *Client) createClientSocket() error {
 	return nil
 }
 
-// StartClientLoop Send messages to the client until some time threshold is met
-func (c *Client) StartClientLoop() {
+// StartClient Send messages to the client until some time threshold is met
+func (c *Client) StartClient() {
 	// Handle SIGINT and SIGTERM
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
-	defer stop()
-
-	select {
-	case <-ctx.Done():
-		log.Debugf("action: shutdown | result: in_progress | signal: %v", ctx.Err())
-		c.closeSocket()
-		log.Debugf("action: shutdown | result: success | signal: %v", ctx.Err())
-		return
-	default:
-	}
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+	c.handle_signals(sigChan)
 
 	// Get the serialized bet_pck message to send, using the env variables
 	bet_pck := getBetPacket(c.config.ID)
@@ -84,6 +80,9 @@ func (c *Client) StartClientLoop() {
 
 	// Send bet to the server
 	sendErr := sendMessage(c.conn, betMsg)
+	if !c.validateStillAlive() {
+		return
+	}
 	if sendErr != nil {
 		log.Errorf("action: apuesta_enviada | result: fail | dni: %v | numero: %v",
 			c.config.ID,
@@ -94,6 +93,9 @@ func (c *Client) StartClientLoop() {
 
 	// Wait for server response to ensure that the message was received
 	msg, readErr := getAck(c.conn)
+	if !c.validateStillAlive() {
+		return
+	}
 	c.conn.Close()
 	if readErr != nil || msg != 0 {
 		log.Errorf("action: receive_message | result: fail | client_id: %v | error: %v",
@@ -107,4 +109,45 @@ func (c *Client) StartClientLoop() {
 		bet_pck.Document,
 		bet_pck.Number,
 	)
+	signal.Stop(sigChan)
+	close(sigChan)
+}
+
+func (c *Client) close() {
+	if c.conn != nil {
+		c.conn.Close()
+	}
+}
+
+func (c *Client) shutdown(err string) {
+	c.keepAliveMutex.Lock()
+	c.keepingAlive = false
+	c.keepAliveMutex.Unlock()
+	log.Debugf("action: shutdown | result: in_progress | signal: %v", err)
+	c.close()
+	log.Debugf("action: shutdown | result: success | signal: %v", err)
+}
+
+func (c *Client) handle_signals(sigChan chan os.Signal) {
+	go func() {
+		sig := <-sigChan
+		switch sig {
+		case syscall.SIGINT:
+			c.shutdown("SIGINT")
+		case syscall.SIGTERM:
+			c.shutdown("SIGTERM")
+		default:
+		}
+	}()
+}
+
+func (c *Client) validateStillAlive() bool {
+	c.keepAliveMutex.RLock()
+	if !c.keepingAlive {
+		c.keepAliveMutex.RUnlock()
+		c.close()
+		return false
+	}
+	c.keepAliveMutex.RUnlock()
+	return true
 }
