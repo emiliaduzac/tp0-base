@@ -258,6 +258,25 @@ En caso de detectar una de las dos señales mencionadas, se marca una variable d
 
 En ambos casos se garantiza un cierre ordenado, limpiando todos los recursos y registrando los logs correspondientes en cada paso.
 
+Para probar el correcto cierre de los contenedores se puede:
+
+1. Levantar los contenedores
+```bash
+make docker-compose-up
+```
+2. Matar algún contenedor utilizando una de las señales:
+```bash
+docker kill --signal=SIGTERM <nombre contenedor>
+```
+por ejemplo:
+```bash
+docker kill --signal=SIGTERM client1
+```
+3. Verificar que el cierre de todos los contenedores haya sido con exit code 0:
+```bash
+docker ps -a
+```
+
 ### Ejercicio N°5:
 > Variables de entorno
 
