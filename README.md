@@ -242,8 +242,15 @@ make docker-compose-down
 ### Ejercicio N°4:
 Tanto en el cliente como en el servidor se manejan las señales SIGTERM y SIGINT para permitir un graceful shutdown.
 
-En el caso del servidor se registra un handler (`signal.signal(<señal a manejar>, <handler>)`) que se ejecuta al recibir una de las señales mencionadas. Ahí se marca al servidor para dejar de recibir conexiones, se cierra el socket correspondiente y termina el programa. 
+En el caso del servidor se registra un handler (`signal.signal(<señal a manejar>, <handler>)`) que ejecuta el handler indicado al recibir una de las señales mencionadas. Ahí se marca al servidor para dejar de recibir conexiones, se cierra el socket correspondiente y termina el programa. 
 
-En el caso del cliente, se genera un contexto (`ctx, stop := signal.NotifyContext(context.Background(), <señal a manejar>)`) que se cancela si detecta una de las señales. Cuando el programa detecta que se canceló el contexto (`<-ctx.Done()`), se cierran los recursos y el programa finaliza.
+En el caso del cliente, se genera una go routine que está a la escucha de las señales a través de un channel:
+```go
+sigChan := make(chan os.Signal, 1)
+signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+// handle signals in go routine
+```
+En caso de detectar una de las dos señales mencionadas, se marca una variable del cliente `keepingAlive` como False y se cierra el socket del cliente. La variable booleana sirve para el caso de que la tarea principal del cliente haya quedado bloqueado por una operación de I/O. Si se recibe la señal, al cerrar el socket esa operación lanzará un error. Cuando deje de ejecutarse, habrá una validación para ver si `keepingAlive` cambió su valor a False. Si ese es el caso, deja de ejecutarse el loop principal del cliente y finaliza correctamente, habiendo cerrado el socket. Además, se deja de enviar las señales al canal utilizado por la go routine y se cierra dicho canal.
+Dado que tanto el hilo principal y la go routine manejan la variable `keepingAlive`, utilicé un read-write lock para poder manejar la concurrencia.
 
 En ambos casos se garantiza un cierre ordenado, limpiando todos los recursos y registrando los logs correspondientes en cada paso.

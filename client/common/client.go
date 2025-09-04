@@ -2,10 +2,11 @@ package common
 
 import (
 	"bufio"
-	"context"
 	"fmt"
 	"net"
+	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
@@ -24,15 +25,18 @@ type ClientConfig struct {
 
 // Client Entity that encapsulates how
 type Client struct {
-	config ClientConfig
-	conn   net.Conn
+	config         ClientConfig
+	conn           net.Conn
+	keepingAlive   bool
+	keepAliveMutex sync.RWMutex
 }
 
 // NewClient Initializes a new client receiving the configuration
 // as a parameter
 func NewClient(config ClientConfig) *Client {
 	client := &Client{
-		config: config,
+		config:       config,
+		keepingAlive: true,
 	}
 	return client
 }
@@ -59,20 +63,16 @@ func (c *Client) createClientSocket() error {
 // StartClientLoop Send messages to the client until some time threshold is met
 func (c *Client) StartClientLoop() {
 	// Handle SIGINT and SIGTERM
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
-	defer stop()
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+	c.handle_signals(sigChan)
 
 	// There is an autoincremental msgID to identify every message sent
 	// Messages if the message amount threshold has not been surpassed
 	for msgID := 1; msgID <= c.config.LoopAmount; msgID++ {
-		// Check if a termination signal was received
-		select {
-		case <-ctx.Done():
-			log.Debugf("action: shutdown | result: in_progress | signal: %v", ctx.Err())
-			c.close()
-			log.Debugf("action: shutdown | result: success | signal: %v", ctx.Err())
-			return
-		default:
+		// Verify if the shutdown signal was received
+		if !c.validateStillAlive() {
+			break
 		}
 
 		// Create the connection the server in every loop iteration. Send an
@@ -91,8 +91,15 @@ func (c *Client) StartClientLoop() {
 			c.config.ID,
 			msgID,
 		)
+		if !c.validateStillAlive() {
+			break
+		}
+
 		msg, err := bufio.NewReader(c.conn).ReadString('\n')
 		c.conn.Close()
+		if !c.validateStillAlive() {
+			break
+		}
 
 		if err != nil {
 			log.Errorf("action: receive_message | result: fail | client_id: %v | error: %v",
@@ -110,11 +117,47 @@ func (c *Client) StartClientLoop() {
 		// Wait a time between sending one message and the next one
 		time.Sleep(c.config.LoopPeriod)
 	}
+
 	log.Infof("action: loop_finished | result: success | client_id: %v", c.config.ID)
+	signal.Stop(sigChan)
+	close(sigChan)
 }
 
 func (c *Client) close() {
 	if c.conn != nil {
 		c.conn.Close()
 	}
+}
+
+func (c *Client) shutdown(err string) {
+	c.keepAliveMutex.Lock()
+	c.keepingAlive = false
+	c.keepAliveMutex.Unlock()
+	log.Debugf("action: shutdown | result: in_progress | signal: %v", err)
+	c.close()
+	log.Debugf("action: shutdown | result: success | signal: %v", err)
+}
+
+func (c *Client) handle_signals(sigChan chan os.Signal) {
+	go func() {
+		sig := <-sigChan
+		switch sig {
+		case syscall.SIGINT:
+			c.shutdown("SIGINT")
+		case syscall.SIGTERM:
+			c.shutdown("SIGTERM")
+		default:
+		}
+	}()
+}
+
+func (c *Client) validateStillAlive() bool {
+	c.keepAliveMutex.RLock()
+	if !c.keepingAlive {
+		c.keepAliveMutex.RUnlock()
+		c.close()
+		return false
+	}
+	c.keepAliveMutex.RUnlock()
+	return true
 }
