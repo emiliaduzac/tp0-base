@@ -27,7 +27,7 @@ func (e *ProtocolError) Error() string {
 func getBetBatchToSend(reader *bufio.Reader, config ClientConfig, batch []byte) ([]byte, []byte, error) {
 	betsInBatch := 0
 
-	for betsInBatch < config.MaxSizeAmount {
+	for betsInBatch < config.MaxBetsAmount {
 		line, readErr := reader.ReadString('\n')
 		line = strings.TrimRight(line, "\r\n")
 

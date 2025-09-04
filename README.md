@@ -284,13 +284,19 @@ Para este ejercicio se debía agregar un cambio principal: el cliente ya no env�
 
 Para enviarlas al servidor, había que enviar las apuestas en batches, controlando que no excedan la cantidad estipulada por `maxAmount` ni 8kB.
 
-En el ejercicio anterior, el protocolo de comunicación solo contemplaba una apuesta por mensaje, por lo que no era posible saber cuantas bets leer en total ni cuantos batches había que esperar de un mismo cliente. Por esta razón, modifiqué mi protocolo al siguiente:
+En el ejercicio anterior, el protocolo de comunicación solo contemplaba una apuesta por mensaje, por lo que no era necesario saber cuantas bets leer en total ni cuantos batches había que esperar de un mismo cliente. Por esta razón, modifiqué mi protocolo al siguiente:
 
 ![Mensaje BetPacket](doc_images/ej6_bet_message.png)
 
 Ahora se incluye 1 byte que funciona como flag, indicando si quedan más batches o es el último (0=quedan más batches por leer, 1=último batch). Luego, se incluyen 2 bytes para indicar el largo total del batch actual. De esta forma, el servidor sabe cuantos bytes debería leer del socket. Una vez leídos estos primeros 3 bytes, el protocolo vuelve a ser el anterior: los siguientes 6 bytes indicarán las longitudes de cada campo de una apuesta y con eso leerá la apuesta. Le seguirán 6 bytes indicando las longitudes de la siguiente apuesta, dado que ahora se pueden enviar varias, y así sucesivamente.
-
 De esta forma, se escaló de manera simple el protocolo implementado en el ejercicio anterior.
+
+-> Dado el protocolo de mensaje definido, podemos estipular mas o menos cuantas apuestas podrían entrar sin superar los 8kB. 
+Con el header del mensaje completo tenemos 3 bytes. Luego, por cada batch tenemos 6 bytes de header y un payload que podemos aproximar: 1 byte para la _agencia_, 25 bytes aproximadamente para cada nombre (_firstName_ y _lastName_), 8 bytes de _documento_, 10 bytes para la _fecha de nacimiento_ y suponiendo que los _números_ son similares a los provistos como ejemplo, 4 bytes. => En total serían 73 bytes. Sumando los headers voy a llevar a un máximo de 85 bytes.
+=> 8912 bytes - 85 bytes * `maxAmount`= 0
+=> 8912 bytes / 85 bytes = `maxAmount`
+=> 104.8 = maxAmount => Para asegurarnos mejor, dejo como límite 100 apuestas aunque de igual forma verifico que ambas condiciones se cumplan: no se superen las `maxAmount` de apuestas ni se superen los 8kB.
+
 
 El servidor sigue respondiendo de la misma manera, mismo protocolo al ejercicio anterior.
 

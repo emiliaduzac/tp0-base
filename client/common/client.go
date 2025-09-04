@@ -21,7 +21,7 @@ type ClientConfig struct {
 	ServerAddress string
 	LoopAmount    int
 	LoopPeriod    time.Duration
-	MaxSizeAmount int
+	MaxBetsAmount int
 }
 
 // Client Entity that encapsulates how
@@ -95,14 +95,14 @@ func (c *Client) sendBets() error {
 	defer file.Close()
 
 	reader := bufio.NewReader(file)
-	max_payload_size := c.config.MaxSizeAmount - BATCH_HEADER
+	max_payload_size := c.config.MaxBetsAmount - BATCH_HEADER
 	buffer := make([]byte, 0, max_payload_size)
 	for {
 		// Get the next batch of bets to send
 		batch, lastBet, err := getBetBatchToSend(reader, c.config, buffer)
 
 		// Send the batch to the server
-		sendErr := sendMessage(c.conn, batch)
+		sendErr := c.sendMessage(c.conn, batch)
 		if sendErr != nil || !c.validateStillAlive() {
 			break
 		}
