@@ -242,17 +242,19 @@ make docker-compose-down
 ### Ejercicio N°4:
 Tanto en el cliente como en el servidor se manejan las señales `SIGTERM` y `SIGINT` para permitir un graceful shutdown.
 
-En el caso del servidor se registra un handler (`signal.signal(<señal a manejar>, )`) que ejecuta el handler indicado al recibir una de las señales mencionadas. Ahí se marca al servidor para dejar de recibir conexiones, se cierra el socket correspondiente y termina el programa.
+En el caso del servidor se registra un handler (`signal.signal(<señal a manejar>, <handler>)`) que ejecuta el handler indicado al recibir una de las señales mencionadas. Ahí se marca al servidor para dejar de recibir conexiones y se cierra el socket correspondiente. Al cerrar el socket, hacemos que las operaciones de I/O bloqueantes como `accept`, `recv` o `send` generen una excepción, que será manejada para poder hacer un cierre ordenado del programa.
 
 En el caso del cliente, se genera una go routine que está a la escucha de las señales a través de un channel:
 
 ```go
 sigChan := make(chan os.Signal, 1)
 signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM) 
-// handle signals in go routine 
+go func() {
+    // handle signlas (listen from channel)
+}
 ```
 
-En caso de detectar una de las dos señales mencionadas, se marca una variable del cliente `keepingAlive` como `False` (inicializada en `True`) y se cierra el socket del cliente. La variable booleana sirve para el caso de que la tarea principal del cliente haya quedado bloqueado por una operación de I/O. Si se recibe la señal, al cerrar el socket esa operación lanzará un error. Cuando deje de ejecutarse, habrá una validación para ver si `keepingAlive` cambió su valor a `False`. Si ese es el caso, deja de ejecutarse el loop principal del cliente y finaliza correctamente, habiendo cerrado el socket. Además, se deja de enviar las señales al canal utilizado por la go routine y se cierra dicho canal. Dado que tanto el hilo principal y la go routine manejan la variable keepingAlive, utilicé un read-write lock para poder manejar la concurrencia.
+En caso de detectar una de las dos señales mencionadas, se marca una variable del cliente `keepingAlive` como `False` (inicializada en `True`) y se cierra el socket del cliente. La variable booleana sirve para el caso de que la tarea principal del cliente haya quedado bloqueado por una operación de I/O. Si se recibe la señal, al cerrar el socket esa operación lanzará un error. Cuando deje de ejecutarse, habrá una validación para ver si `keepingAlive` cambió su valor a `False`. Si ese es el caso, deja de ejecutarse el loop principal del cliente y finaliza correctamente, habiendo cerrado el socket. Además, se deja de enviar las señales al canal utilizado por la go routine y se cierra dicho canal. Dado que tanto el hilo principal y la go routine manejan la variable `keepingAlive`, utilicé un read-write lock para poder manejar la concurrencia.
 
 En ambos casos se garantiza un cierre ordenado, limpiando todos los recursos y registrando los logs correspondientes en cada paso.
 
@@ -264,12 +266,14 @@ En este ejercicio se asumen 5 agencias. Cada cliente debe poder enviar su apuest
 > Protocolo de comunicación
 
 El objetivo de este ejercicio es que el cliente envíe una apuesta al servidor, quien la almacena y le confirma la recepción del mensaje. Para ello, utilicé sockets TCP como protocolo de capa de transporte.
-El protocolo de comunicación es de esquema mixto: se incluyen 6 bytes de tamaño fijo y luego el resto de campos utilizan las longitudes definidas en los primeros 6 bytes como delimitadores.
+El protocolo de comunicación es de esquema mixto: se incluyen algunos bytes fijos para indicadores (como headers) y luego el contenido (payload) es de longitud variable, pero definida por los headers.
+
+6 bytes de tamaño fijo y luego el resto de campos utilizan las longitudes definidas en los primeros 6 bytes como delimitadores.
 
 #### Cliente
 El cliente genera una estructura de tipo `BetPacket` para representar el mensaje que indicará la apuesta realizada. En dicha estructura, se incluyen 6 campos para indicar la longitud (en bytes) de cada un de los siguientes 6 campos que representan una apuesta. Seguido a eso, se encuentran los 6 campos mencionados.
 
-Para enviarlos a través del socket TCP, se codifican a bytes siguiendo el orden indicado por la estructura `BetPacket`. De esta forma, el servidor sabe como decodifcarlo para leer correctamente la apuesta.
+Para enviarlos a través del socket TCP, se codifican a bytes los headers y a UTF-8 los campos siguiendo el orden indicado por la estructura `BetPacket`. De esta forma, el servidor sabe como decodifcarlo para leer correctamente la apuesta.
 
 ![Mensaje BetPacket](doc_images/ej5_bet_message.png)
 
@@ -280,9 +284,9 @@ Un 0 indica que el mensaje fue recibido y procesado correctamente, un 1 indica u
 ![Mensaje ACK](doc_images/ack_message.png)
 
 ### Ejercicio N°6:
-Para este ejercicio se debía agregar un cambio principal: el cliente ya no envía más una sola apuesta, sino varias, las cuales lee de un archivo.
+Para este ejercicio se debía agregar un cambio principal: el cliente ya no envía más una sola apuesta, sino varias, las cuales lee de un archivo. Para esto, ya no se necesitan más las variables de entorno que indican los datos de una apuesta, por lo que podrían directamente eliminarse del archivo `.env`. Por continuidad a los ejercicios anteriores, el archivo quedó con los datos pero no son utilizados (salvo por el `id` del cliente).
 
-Para enviarlas al servidor, había que enviar las apuestas en batches, controlando que no excedan la cantidad estipulada por `maxAmount` ni 8kB.
+Para enviar las apuestas al servidor, había que enviarlas en batches, controlando que no excedan la cantidad estipulada por `maxAmount` ni los 8kB.
 
 En el ejercicio anterior, el protocolo de comunicación solo contemplaba una apuesta por mensaje, por lo que no era necesario saber cuantas bets leer en total ni cuantos batches había que esperar de un mismo cliente. Por esta razón, modifiqué mi protocolo al siguiente:
 
@@ -290,16 +294,17 @@ En el ejercicio anterior, el protocolo de comunicación solo contemplaba una apu
 
 Ahora se incluye 1 byte que funciona como flag, indicando si quedan más batches o es el último (0=quedan más batches por leer, 1=último batch). Luego, se incluyen 2 bytes para indicar el largo total del batch actual. De esta forma, el servidor sabe cuantos bytes debería leer del socket. Una vez leídos estos primeros 3 bytes, el protocolo vuelve a ser el anterior: los siguientes 6 bytes indicarán las longitudes de cada campo de una apuesta y con eso leerá la apuesta. Le seguirán 6 bytes indicando las longitudes de la siguiente apuesta, dado que ahora se pueden enviar varias, y así sucesivamente. De esta forma, se escaló de manera simple el protocolo implementado en el ejercicio anterior.
 
--> Dado el protocolo de mensaje definido, podemos estipular mas o menos cuantas apuestas podrían entrar sin superar los 8kB. Con el header del mensaje completo tenemos 3 bytes. Luego, por cada batch tenemos 6 bytes de header y un payload que podemos aproximar: 1 byte para la agencia, 25 bytes aproximadamente para cada nombre (firstName y lastName), 8 bytes de documento, 10 bytes para la fecha de nacimiento y suponiendo que los números son similares a los provistos como ejemplo, 4 bytes. 
+→ Dado el protocolo de mensaje definido, podemos estipular mas o menos cuantas apuestas podrían entrar sin superar los 8kB. Con el _header_ del mensaje completo tenemos 3 bytes. Luego, por cada batch tenemos 6 bytes de _header_ y un _payload_ que podemos aproximar: 1 byte para la _agencia_, 25 bytes aproximadamente para cada nombre (_firstName_ y _lastName_), 8 bytes de _documento_, 10 bytes para la _fecha de nacimiento_ y suponiendo que los _números_ son similares a los provistos como ejemplo, 4 bytes. 
+
 En total serían 73 bytes. Sumando los headers voy a llevar a un máximo de 85 bytes. 
-=> 8912 bytes - 85 bytes * maxAmount= 0 
-=> 8912 bytes / 85 bytes = maxAmount 
-=> 104.8 = maxAmount 
+⇒ 8912 bytes - 85 bytes * maxAmount = 0 
+⇒ 8912 bytes / 85 bytes = maxAmount 
+⇒ 104.8 = maxAmount 
 Para asegurarnos mejor, dejo como límite 100 apuestas aunque de igual forma verifico que ambas condiciones se cumplan: no se superen las maxAmount de apuestas ni se superen los 8kB.
 
-El servidor sigue respondiendo de la misma manera, mismo protocolo al ejercicio anterior.
+El servidor sigue respondiendo de la misma manera, mismo protocolo al ejercicio anterior: byte en 0 indica ACK, byte en 1 indica NACK.
 
-Para obtener las apuestas, el servidor leerá linea por linea el archivo que le corresponda, montado a través de un volumen. Al leer las apuestas, irá formando los batches. Una vez completado un batch (ya sea porque se llegó a la maxAmount de apuestas o a los 8kB), lo enviará y esperará la respuesta (confirmación) del servidor antes de seguir enviando el resto de batches. Una vez enviadas todas las apuestas (fin del archivo), puede cerrar la conexión.
+Para obtener las apuestas, el cliente leerá linea por linea el archivo que le corresponda, montado a través de un volumen. Al leer las apuestas, irá formando los batches. Una vez completado un batch (ya sea porque se llegó a la maxAmount de apuestas o a los 8kB), lo enviará y esperará la respuesta (confirmación) del servidor antes de seguir enviando el resto de batches. Una vez enviadas todas las apuestas (fin del archivo), puede cerrar la conexión.
 
 ### Ejercicio N°7:
 
@@ -309,9 +314,9 @@ El cliente debe:
 3. Esperar los ganadores
 
 En el ejercicio anterior, mi protocolo ya envíaba todas las apuestas y al enviar la última, le notificaba al servidor que ya no habían más apuestas a través de un OpCode indicado en el primer byte que era el último batch.
-Inicialmente intenté integrar dicho OpCode como mensaje de finalización, y aprovechar que cada apuesta indicaba el número de agencia para evitar tener que generar otro mensaje de fin. Esto no fue posible ya que no se contemplaba el caso de que el end of file (no más apuestas) se enviara en un batch vacío, es decir: sin más apuestas. En esos casos, no había ninguna apuesta válida por la cual obtener el número de agencia.
+Inicialmente intenté integrar dicho OpCode como mensaje de finalización, y aprovechar que cada apuesta indicaba el número de agencia para evitar tener que generar otro mensaje de fin. Esto no fue posible ya que no se contemplaba el caso de que el end of file (no más apuestas) se enviara en un batch vacío, es decir: sin más apuestas. En esos casos, no había ninguna apuesta válida por la cual obtener el número de agencia y mi protocolo no funcionaba como esperado.
 
-Para resolver entonces la consigna, integré un nuevo mensaje de finalización y modifiqué el original de apuestas.
+Para resolver entonces la consigna de manera ordenada y prolija, integré un nuevo mensaje de finalización y modifiqué el original de apuestas.
 El mensaje de apuestas sigue manteniendo el mismo formato, pero cambia el significado del primer byte (primer opcode).
 - OpCode de tipo de mensaje: un byte que indica si el mensaje es un batch de apuestas (0) o si es un mensaje que indica el fin de envío (1)
 - BatchLen: indica el largo total del payload en bytes, es decir: de todas las apuestas del batch
@@ -359,12 +364,13 @@ A pesar de que la mayoría de los DNIs tendrán la misma longitud en bytes, es m
 Ahora bien. Al agregar un OpCode para la respuesta, ¿como se modifican los mensajes de ACK y NACK? No lo hacen. Simplemente se envia el OpCode sin body, por lo que el cliente sabe que tipo de mensaje es y como manejarlo solamente con leer el primer byte.
 
 ### Ejercicio N°8:
-Para manejar la concurrencia en el servidor decidí elegir el modelo multithreading, a pesar de la limitación que implica el Global Interpreter Lock en python. Este que actúa como un mutex del interprete que impide que múltiples hilos ejecuten bytecode de Python en paralelo, restringiendo el paralelismo real. 
+> Decisión del modelo elegido
+Para manejar la concurrencia en el servidor decidí elegir el modelo multithreading, a pesar de la limitación que implica el ***Global Interpreter Lock*** en python. Este que actúa como un mutex del interprete que impide que múltiples hilos ejecuten bytecode de Python en paralelo, restringiendo el paralelismo real. 
 
 Sin embargo, el sistema actual de lotería no es CPU-intensive:
 - El servidor escucha conexiones de un socket en su hilo principal
-- Por cada conexión establecida, se genera un hilo dedicado a manejarla. Dicho hilo se encarga de la comunicación con el cliente: recibir apuestas por el socket y enviar la confirmación y ganadores -> tareas I/O
-Las tareas de I/O liberan el GIL, mientras que las CPU-intensive lo bloquean. En este caso, las tareas que requieren del CPU son simplemente procesar, almacenar y leer las apuestas, lo cuál no implica ....
+- Por cada conexión establecida, se genera un hilo dedicado a manejarla. Dicho hilo se encarga de la comunicación con el cliente: recibir apuestas por el socket y enviar la confirmación y ganadores → tareas I/O
+Las tareas de I/O liberan el GIL, mientras que las CPU-intensive lo bloquean. En este caso, las tareas que requieren del CPU son simplemente procesar, almacenar y leer las apuestas, lo cuál no implica tanto uso del CPU.
 
 A pesar de tener ciertas limitaciones, considero que el GIL no implica un cuello de botella significativo para el caso del ejercicio actual y lo pedido para su funcionamiento.
 

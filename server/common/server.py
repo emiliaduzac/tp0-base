@@ -5,7 +5,7 @@ import threading
 
 from common.utils import store_bets, load_bets, has_won
 from common.lottery_protocol import ProtocolError, send_ack, send_nack, read_bets_from_socket, send_winners, read_n_bytes
-from common.protocol_utils import OpCodeReq
+from common.protocol_utils import OpCodeReq, AGENCY_HEADER
 
 class Server:
     def __init__(self, port, listen_backlog, total_clients):
@@ -50,9 +50,7 @@ class Server:
                     break
 
         finally:
-            for t in self._cli_threads:
-                t.join()
-            logging.debug("action: join_threads | result: success")  
+            self.__join_threads()
 
     def __handle_client_connection(self, client_sock):
         """
@@ -109,9 +107,7 @@ class Server:
         self._server_socket.close()
         logging.debug("action: close_socket | result: success")  
 
-        for t in self._cli_threads:
-            t.join()
-        logging.debug("action: join_threads | result: success")
+        self.__join_threads()
         logging.debug(f"action: shutdown | result: success | signal: {signum}")
 
 
@@ -130,7 +126,7 @@ class Server:
     def __handle_end(self, client_sock):
         """ Handle the end of the communication with a client. Checks if all clients are done in order to 
         find the lottery winners and send them to each client. """
-        agency = read_n_bytes(client_sock, 1)[0]
+        agency = read_n_bytes(client_sock, AGENCY_HEADER)[0]
 
         with self._winners_lock:
             self._clients_sending -= 1
@@ -138,8 +134,8 @@ class Server:
 
             # Verify if all clients sent their bets to find the loterry winners
             if self._clients_sending == 0:
-                logging.info("action: sorteo | result: success")
                 all_winners = self.__get_winners()
+                logging.info("action: sorteo | result: success")
 
                 for act_agency, sock in self._clients_waiting_winners.items():
                     winners = all_winners.get(int(act_agency), [])
@@ -158,3 +154,8 @@ class Server:
             if has_won(bet):
                 winners[bet.agency] = winners.get(bet.agency, []) + [bet.document]
         return winners
+    
+    def __join_threads(self):
+        for t in self._cli_threads:
+            t.join()
+        logging.debug("action: join_threads | result: success")

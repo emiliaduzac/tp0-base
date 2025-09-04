@@ -20,7 +20,6 @@ func getBetBatchToSend(reader *bufio.Reader, config ClientConfig, batch []byte) 
 		line = strings.TrimRight(line, "\r\n")
 		// If the line is empty and we reached EOF, return what we have.
 		if readErr == io.EOF && line == "" {
-			log.Infof("Linea vacia y EOF. Mando {%d} apuestas", betsInBatch)
 			if betsInBatch == 0 {
 				return nil, nil, readErr
 			}
@@ -49,12 +48,10 @@ func getBetBatchToSend(reader *bufio.Reader, config ClientConfig, batch []byte) 
 
 		// End of file, return the batch and indicate that its the last one
 		if readErr == io.EOF {
-			log.Infof("EOF. Mando {%d} apuestas", betsInBatch)
 			return serializeBatch(batch), nil, readErr
 		}
 	}
 
-	log.Infof("Llegue a max bets. Mando {%d} apuestas", betsInBatch)
 	return serializeBatch(batch), nil, nil
 }
 
@@ -95,8 +92,9 @@ func getBetFile(id string) (*os.File, error) {
 
 // Reads the server's response to find the winners of the lottery.
 func parseWinnersResponse(r *bufio.Reader) (int, error) {
-	totalLenBuf := make([]byte, 2)
-	if _, err := io.ReadFull(r, totalLenBuf); err != nil {
+	totalLenBuf := make([]byte, WINNERS_HEADER)
+	if lenRead, err := io.ReadFull(r, totalLenBuf); err != nil || lenRead != WINNERS_HEADER {
+		log.Error("ACA")
 		return 0, err
 	}
 
@@ -105,12 +103,15 @@ func parseWinnersResponse(r *bufio.Reader) (int, error) {
 	totalWinners := 0
 	totalRead := 0
 	for totalRead < totalLen {
-		dniLenBuf := make([]byte, 1)
-		if _, err := io.ReadFull(r, dniLenBuf); err != nil {
+		dniLenBuf := make([]byte, DNI_HEADER)
+		if lenLen, err := io.ReadFull(r, dniLenBuf); err != nil || lenLen != DNI_HEADER {
+			log.Error("ACA")
 			return totalWinners, err
 		}
+
 		dniBuf := make([]byte, int(dniLenBuf[0]))
-		if _, err := io.ReadFull(r, dniBuf); err != nil {
+		if lenDni, err := io.ReadFull(r, dniBuf); err != nil || lenDni != int(dniLenBuf[0]) {
+			log.Error("ACA")
 			return totalWinners, err
 		}
 		totalWinners++

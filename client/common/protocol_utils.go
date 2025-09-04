@@ -6,6 +6,9 @@ import (
 
 const BATCH_HEADER = 3
 const BET_HEADER = 6
+const WINNERS_HEADER = 2
+const DNI_HEADER = 1
+const AGENCY_HEADER = 1
 const MAX_BATCH_SIZE = 8192
 
 type OpCodeRequest byte

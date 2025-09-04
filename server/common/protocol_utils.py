@@ -3,6 +3,7 @@ from enum import Enum
 BATCH_HEADER_SIZE = 2
 HEADER_SIZE = 6
 TOTAL_FIELDS_BET = 6
+AGENCY_HEADER = 1
 
 class OpCodeResp(Enum):
     OC_ACK = 0x00
