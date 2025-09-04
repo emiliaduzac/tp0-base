@@ -107,7 +107,7 @@ class Server:
         self._running = False
         self._server_socket.close()
         logging.debug("action: close_socket | result: success")  
-
+        self.__close_cli_sockets()
         self.__join_threads()
         logging.debug(f"action: shutdown | result: success | signal: {signum}")
 
@@ -157,10 +157,20 @@ class Server:
                 winners[bet.agency] = winners.get(bet.agency, []) + [bet.document]
         return winners
     
+    
     def __join_threads(self):
         for t in self._cli_threads:
             t.join()
         logging.debug("action: join_client_threads | result: success")
+
+
+    def __close_cli_sockets(self):
+        for sock in self._clients_waiting_winners.values():
+            try:
+                sock.close()
+            except Exception as e:
+                logging.error(f"action: close_client_socket | result: fail | error: {e}")
+        logging.debug("action: close_client_sockets | result: success")
         
 
     def __clean_resources(self):
