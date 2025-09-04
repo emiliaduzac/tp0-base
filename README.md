@@ -242,9 +242,14 @@ make docker-compose-down
 ### Ejercicio N°4:
 Tanto en el cliente como en el servidor se manejan las señales SIGTERM y SIGINT para permitir un graceful shutdown.
 
-En el caso del servidor se registra un handler (`signal.signal(<señal a manejar>, <handler>)`) que se ejecuta al recibir una de las señales mencionadas. Ahí se marca al servidor para dejar de recibir conexiones, se cierra el socket correspondiente y termina el programa. 
+En el caso del servidor se registra un handler (signal.signal(<señal a manejar>, )) que ejecuta el handler indicado al recibir una de las señales mencionadas. Ahí se marca al servidor para dejar de recibir conexiones, se cierra el socket correspondiente y termina el programa.
 
-En el caso del cliente, se genera un contexto (`ctx, stop := signal.NotifyContext(context.Background(), <señal a manejar>)`) que se cancela si detecta una de las señales. Cuando el programa detecta que se canceló el contexto (`<-ctx.Done()`), se cierran los recursos y el programa finaliza.
+En el caso del cliente, se genera una go routine que está a la escucha de las señales a través de un channel:
+
+sigChan := make(chan os.Signal, 1)
+signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+// handle signals in go routine
+En caso de detectar una de las dos señales mencionadas, se marca una variable del cliente keepingAlive como False y se cierra el socket del cliente. La variable booleana sirve para el caso de que la tarea principal del cliente haya quedado bloqueado por una operación de I/O. Si se recibe la señal, al cerrar el socket esa operación lanzará un error. Cuando deje de ejecutarse, habrá una validación para ver si keepingAlive cambió su valor a False. Si ese es el caso, deja de ejecutarse el loop principal del cliente y finaliza correctamente, habiendo cerrado el socket. Además, se deja de enviar las señales al canal utilizado por la go routine y se cierra dicho canal. Dado que tanto el hilo principal y la go routine manejan la variable keepingAlive, utilicé un read-write lock para poder manejar la concurrencia.
 
 En ambos casos se garantiza un cierre ordenado, limpiando todos los recursos y registrando los logs correspondientes en cada paso.
 
@@ -276,13 +281,13 @@ Para este ejercicio se debía agregar un cambio principal: el cliente ya no env�
 
 Para enviarlas al servidor, había que enviar las apuestas en batches, controlando que no excedan la cantidad estipulada por `maxAmount` ni 8kB.
 
-En el ejercicio anterior, el protocolo de comunicación solo contemplaba una apuesta por mensaje, por lo que no era posible saber cuantas bets leer en total ni cuantos batches había que esperar de un mismo cliente. Por esta razón, modifiqué mi protocolo al siguiente:
+En el ejercicio anterior, el protocolo de comunicación solo contemplaba una apuesta por mensaje, por lo que no era necesario saber cuantas bets leer en total ni cuantos batches había que esperar de un mismo cliente. Por esta razón, modifiqué mi protocolo al siguiente:
 
 ![Mensaje BetPacket](doc_images/ej6_bet_message.png)
 
-Ahora se incluye 1 byte que funciona como flag, indicando si quedan más batches o es el último (0=quedan más batches por leer, 1=último batch). Luego, se incluyen 2 bytes para indicar el largo total del batch actual. De esta forma, el servidor sabe cuantos bytes debería leer del socket. Una vez leídos estos primeros 3 bytes, el protocolo vuelve a ser el anterior: los siguientes 6 bytes indicarán las longitudes de cada campo de una apuesta y con eso leerá la apuesta. Le seguirán 6 bytes indicando las longitudes de la siguiente apuesta, dado que ahora se pueden enviar varias, y así sucesivamente.
+Ahora se incluye 1 byte que funciona como flag, indicando si quedan más batches o es el último (0=quedan más batches por leer, 1=último batch). Luego, se incluyen 2 bytes para indicar el largo total del batch actual. De esta forma, el servidor sabe cuantos bytes debería leer del socket. Una vez leídos estos primeros 3 bytes, el protocolo vuelve a ser el anterior: los siguientes 6 bytes indicarán las longitudes de cada campo de una apuesta y con eso leerá la apuesta. Le seguirán 6 bytes indicando las longitudes de la siguiente apuesta, dado que ahora se pueden enviar varias, y así sucesivamente. De esta forma, se escaló de manera simple el protocolo implementado en el ejercicio anterior.
 
-De esta forma, se escaló de manera simple el protocolo implementado en el ejercicio anterior.
+-> Dado el protocolo de mensaje definido, podemos estipular mas o menos cuantas apuestas podrían entrar sin superar los 8kB. Con el header del mensaje completo tenemos 3 bytes. Luego, por cada batch tenemos 6 bytes de header y un payload que podemos aproximar: 1 byte para la agencia, 25 bytes aproximadamente para cada nombre (firstName y lastName), 8 bytes de documento, 10 bytes para la fecha de nacimiento y suponiendo que los números son similares a los provistos como ejemplo, 4 bytes. => En total serían 73 bytes. Sumando los headers voy a llevar a un máximo de 85 bytes. => 8912 bytes - 85 bytes * maxAmount= 0 => 8912 bytes / 85 bytes = maxAmount => 104.8 = maxAmount => Para asegurarnos mejor, dejo como límite 100 apuestas aunque de igual forma verifico que ambas condiciones se cumplan: no se superen las maxAmount de apuestas ni se superen los 8kB.
 
 El servidor sigue respondiendo de la misma manera, mismo protocolo al ejercicio anterior.
 
