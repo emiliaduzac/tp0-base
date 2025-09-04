@@ -325,6 +325,28 @@ El servidor sigue respondiendo de la misma manera, mismo protocolo al ejercicio 
 
 Para obtener las apuestas, el cliente leerá linea por linea el archivo que le corresponda, montado a través de un volumen. Al leer las apuestas, irá formando los batches. Una vez completado un batch (ya sea porque se llegó a la maxAmount de apuestas o a los 8kB), lo enviará y esperará la respuesta (confirmación) del servidor antes de seguir enviando el resto de batches. Una vez enviadas todas las apuestas (fin del archivo), puede cerrar la conexión.
 
+> Short reads & short writes
+
+#### Cliente
+El cliente debe leer:
+- Confirmación (ACK) → OpCode → solamente un byte, por lo que no habrá problemas. Si no puede leer el byte, devolverá un error.
+- Ganadores (a partir del ejercicio 7) → Utilizo el método `readFull` de la librería `bufio`, que según la documentación: _ReadFull reads exactly len(buf) bytes from r into buf_, solo podría leer menos bytes en caso de error, el cual sería manejado en el cliente. Además, para verificar, siempre verifico que el valor devuelto sea el esperado, siendo que por mi protocolo ya se la cantidad de bytes que debo leer en cada caso. Para conocer el protocolo de ganadores leer el ejercicio 7.
+
+#### Servidor
+El servidor lee:
+- Las apuestas enviadas: por mi protocolo, se cuantos bytes debe leer para cada parte del mensaje (header, payload, etc), por lo que itero utilizando `socket.rcv(n)` hasta que efectivamente se hayan leído los `n`bytes esperados:
+```python
+# codigo de ejemplo
+while len(all_ready_read) < n:
+    read = client_sock.recv(n)
+    if not read:
+        return
+    all_ready_read += read
+```
+
+Lo mismo sucede al envíar mensajes al cliente, utilizando: `socket.send(msg)`
+
+
 ### Ejercicio N°7:
 
 El cliente debe:
