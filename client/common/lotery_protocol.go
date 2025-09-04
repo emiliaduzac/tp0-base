@@ -10,6 +10,8 @@ import (
 
 const BATCH_HEADER = 3
 const BET_HEADER = 6
+const WINNERS_HEADER = 2
+const DNI_HEADER = 1
 const MAX_BATCH_SIZE = 8192
 
 type OpCodeRequest byte
@@ -119,8 +121,9 @@ func getBetFile(id string) (*os.File, error) {
 
 // Reads the server's response to find the winners of the lottery.
 func parseWinnersResponse(r *bufio.Reader) (int, error) {
-	totalLenBuf := make([]byte, 2)
-	if _, err := io.ReadFull(r, totalLenBuf); err != nil {
+	totalLenBuf := make([]byte, WINNERS_HEADER)
+	if lenRead, err := io.ReadFull(r, totalLenBuf); err != nil || lenRead != WINNERS_HEADER {
+		err = verifyReadErr(err)
 		return 0, err
 	}
 
@@ -129,12 +132,15 @@ func parseWinnersResponse(r *bufio.Reader) (int, error) {
 	totalWinners := 0
 	totalRead := 0
 	for totalRead < totalLen {
-		dniLenBuf := make([]byte, 1)
-		if _, err := io.ReadFull(r, dniLenBuf); err != nil {
+		dniLenBuf := make([]byte, DNI_HEADER)
+		if lenLen, err := io.ReadFull(r, dniLenBuf); err != nil || lenLen != DNI_HEADER {
+			err = verifyReadErr(err)
 			return totalWinners, err
 		}
+
 		dniBuf := make([]byte, int(dniLenBuf[0]))
-		if _, err := io.ReadFull(r, dniBuf); err != nil {
+		if lenDni, err := io.ReadFull(r, dniBuf); err != nil || lenDni != int(dniLenBuf[0]) {
+			err = verifyReadErr(err)
 			return totalWinners, err
 		}
 		totalWinners++
@@ -142,4 +148,11 @@ func parseWinnersResponse(r *bufio.Reader) (int, error) {
 	}
 
 	return totalWinners, nil
+}
+
+func verifyReadErr(err error) error {
+	if err == nil {
+		err = &ProtocolError{"Wrong winners response length"}
+	}
+	return err
 }

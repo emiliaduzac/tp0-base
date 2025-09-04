@@ -97,7 +97,7 @@ func (c *Client) StartClient() {
 		reader := bufio.NewReader(reader)
 		cantWinners, parseErr := parseWinnersResponse(reader)
 		if parseErr != nil {
-			log.Infof("action: consulta_ganadores | result: fail | cant_ganadores: %d", cantWinners)
+			log.Infof("action: consulta_ganadores | result: fail | client_id: %v | error: %v", parseErr)
 		}
 		log.Infof("action: consulta_ganadores | result: success | cant_ganadores: %d", cantWinners)
 	}
