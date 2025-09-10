@@ -5,7 +5,7 @@ import threading
 
 from common.utils import store_bets, load_bets, has_won
 from common.lottery_protocol import ProtocolError, send_ack, send_nack, read_bets_from_socket, send_winners, read_n_bytes
-from common.protocol_utils import OpCodeReq, AGENCY_HEADER
+from common.protocol_utils import OpCodeReq, AGENCY_HEADER, END_LENGTH
 
 class Server:
     def __init__(self, port, listen_backlog, total_clients):
@@ -37,6 +37,9 @@ class Server:
             while self._running:
                 try:
                     client_sock = self.__accept_new_connection()
+                    # verify if any thread has finished to join it and remove it from the list
+                    self.__check_finished_threads()
+                    # create a new thread to handle the client
                     t = threading.Thread(target=self.__handle_client_connection, args=(client_sock,))
                     t.start()
                     self._cli_threads.append(t)
@@ -60,31 +63,38 @@ class Server:
         If a problem arises in the communication with the client, the
         client socket will also be closed
         """
+        print("nuevo cliente")
+        try:
+            while True:
+                try:
+                    op_code = read_n_bytes(client_sock, 1)[0]
 
-        while True:
-            try:
-                op_code = read_n_bytes(client_sock, 1)[0]
+                    if op_code == OpCodeReq.OC_BATCHS.value:
+                        self.__handle_batches(client_sock)
 
-                if op_code == OpCodeReq.OC_BATCHS.value:
-                    self.__handle_batches(client_sock)
+                    elif op_code == OpCodeReq.OC_END.value:
+                        self.__handle_end(client_sock)
+                        break
+                    
+                    else:
+                        # unkown op code
+                        logging.error("action: receive_message | result: fail | error: Unknown message")
+                        send_nack(client_sock)
 
-                elif op_code == OpCodeReq.OC_END.value:
-                    self.__handle_end(client_sock)
+                except OSError as e:
+                    logging.error(f"action: receive_message | result: fail | error: {e}")
                     break
                 
-                else:
-                    # unkown op code
-                    logging.error("action: receive_message | result: fail | error: Unknown message")
+                except ProtocolError as e:
                     send_nack(client_sock)
-
-            except OSError as e:
-                logging.error(f"action: receive_message | result: fail | error: {e}")
-                break
-            
-            except ProtocolError as e:
-                send_nack(client_sock)
-                logging.error(f"action: receive_message | result: fail | error: {e}")
-                break
+                    logging.error(f"action: receive_message | result: fail | error: {e}")
+                    break
+        finally:
+            try:
+                #client_sock.close() -> una vez que use barreras, puedo cerrar el socket aca
+                logging.debug("action: close_connection | result: success")
+            except Exception as e:
+                logging.error(f"action: close_connection | result: fail | error: {e}")
             
 
     def __accept_new_connection(self):
@@ -117,7 +127,7 @@ class Server:
         bets = read_bets_from_socket(client_sock)
         addr = client_sock.getpeername()
 
-        if bets != None:
+        if len(bets) > 0:
             with self._bets_file_lock:
                 store_bets(bets)
             send_ack(client_sock)
@@ -133,6 +143,9 @@ class Server:
             self._clients_sending -= 1
             self._clients_waiting_winners[agency] = client_sock
 
+            # TO DO: modificar
+            # - barreras
+            # - cada thread manda a su cliente
             # Verify if all clients sent their bets to find the loterry winners
             if self._clients_sending == 0:
                 all_winners = self.__get_winners()
@@ -149,19 +162,31 @@ class Server:
     def __get_winners(self):
         """ Returns a dictionary with the winners of each agency. Takes a lock of the file while reading it. """
         with self._bets_file_lock:
-            bets = list(load_bets())
-
-        winners = {}
-        for bet in bets:
-            if has_won(bet):
-                winners[bet.agency] = winners.get(bet.agency, []) + [bet.document]
-        return winners
+            winners = {}
+            for bet in load_bets():
+                if has_won(bet):
+                    winners[bet.agency] = winners.get(bet.agency, []) + [bet.document]
+            return winners
     
     
     def __join_threads(self):
         for t in self._cli_threads:
             t.join()
-        logging.debug("action: join_client_threads | result: success")
+            logging.debug("action: join_client_thread | result: success")
+
+    
+    def __check_finished_threads(self):
+        threads_to_remove = []
+        
+        for t in self._cli_threads:
+            if not t.is_alive():
+                t.join()
+                print("elimino un thread")
+                threads_to_remove.append(t)
+                logging.debug("action: join_client_thread | result: success")
+
+        for t in threads_to_remove:
+            self._cli_threads.remove(t)
 
 
     def __close_cli_sockets(self):

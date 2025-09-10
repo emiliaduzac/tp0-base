@@ -10,54 +10,58 @@ def read_bets_from_socket(client_sock):
         Then, each bet is read according to the protocol until the read limit is reached (according to 
         the total length of the batch indicated before).
         """
-        total_read = 0
+        offset = 0
         bets = []
         status = "success"
 
         try:
-            # Read the length of the incoming batch (2 bytes)
+            # Read the length of the incoming batch (2 bytes) -> to know how many bytes to read
             batch_len = read_n_bytes(client_sock, BATCH_HEADER_SIZE)
             length = int(batch_len[0])<<8 | int(batch_len[1])
         except ProtocolError:
             raise ProtocolError("Fail to read from socket")
         
-        # Read the whole batch
-        while total_read < length:
-            # Read next bet
-            fields_length = read_n_bytes(client_sock, HEADER_SIZE)
-            if len(fields_length) < TOTAL_FIELDS_BET:
-                status = "fail"
-                continue
+        # Read the whole batch -> read all in one read call
+        batch = read_n_bytes(client_sock, length)
 
-            bet_fields = read_single_bet(fields_length, client_sock)
-            if bet_fields is None:
+        # Read bets
+        while offset < length:     
+            # Not enough bytes for a full bet header       
+            if offset + TOTAL_FIELDS_BET > length:
                 status = "fail"
                 break
 
-            if len(bet_fields) < TOTAL_FIELDS_BET:
+            # Read the length of each field (6 bytes) and update offset
+            fields_length = []
+            for i in range(TOTAL_FIELDS_BET):
+                fields_length.append(batch[offset + i])
+            offset += TOTAL_FIELDS_BET
+
+            # Not enough bytes for the full bet according to the lengths read
+            if offset + sum(fields_length) > len(batch):
                 status = "fail"
-                continue
+                break
+
+            # Read each field according to its length and update offset
+            bet_fields, offset = read_single_bet(fields_length, batch, offset)
 
             bets.append(Bet(bet_fields[0], bet_fields[1], bet_fields[2], bet_fields[3], bet_fields[4], bet_fields[5]))
-            total_read += HEADER_SIZE + sum(fields_length)
 
         if len(bets) > 0:
             logging.info(f'action: apuesta_recibida | result: {status} | cantidad: {len(bets)}')
         return bets
 
-def read_single_bet(fields_length, client_sock):
+def read_single_bet(fields_length, batch, offset):
     """
     Reads all necessary fields to complete a bet
     """
     bet_fields = []
-    for i in range(TOTAL_FIELDS_BET):
-        field_len = fields_length[i]
-        field = read_n_bytes(client_sock, field_len)
-        if field is None:
-            return None
+    for field_len in fields_length:
+        field = batch[offset: offset+field_len]
         bet_fields.append(field.decode('utf-8'))
+        offset += field_len
 
-    return bet_fields
+    return bet_fields, offset
 
 def send_winners(client_sock, winners):
     """

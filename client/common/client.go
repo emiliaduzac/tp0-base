@@ -92,6 +92,7 @@ func (c *Client) StartClient() {
 		return
 	}
 	if readErr != nil || res == byte(OC_NACK) {
+		log.Info("error en recibir ganadores")
 		log.Errorf("action: receive_message | result: fail | client_id: %v | error: %v",
 			c.config.ID,
 			readErr,
@@ -147,6 +148,7 @@ func (c *Client) sendBets(connReader *bufio.Reader) error {
 			return nil
 		}
 		if readErr != nil {
+			log.Info("eerror en ack")
 			log.Errorf("action: receive_message | result: fail | client_id: %v | error: %v",
 				c.config.ID,
 				readErr,
