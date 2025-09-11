@@ -417,12 +417,13 @@ A pesar de tener ciertas limitaciones, considero que el GIL no implica un cuello
 
 > Manejo concurrente de clientes de parte del servidor
 
-Como mencioné anteriormente, el servidor crea un hilo nuevo para cada conexión establecida. En el, maneja dicha conexión: recibe las apuestas del cliente, las almacena, envía un ACK y así hasta recibir el mensaje de finalización. Aquí, siguie actuando tal como hacía antes: verifica que el resto de clientes hayan terminado para poder enviar los ganadores. Si no han terminado todos los clientes, almacena el socket del cliente actual y finaliza el hilo. Si ya todos han terminado de enviar sus apuestas, obtiene los ganadores y notifica a todos los clientes utilizando los sockets almacenados anteriormente.
-Para esto, requerí de usar locks para evitar problemas de concurrencia como race conditions o deadlocks. Este mecanismo es utilizado en:
+Como mencioné anteriormente, el servidor crea un hilo nuevo para cada conexión establecida. En el, maneja dicha conexión: recibe las apuestas del cliente, las almacena, envía un ACK y así hasta recibir el mensaje de finalización. Una vez que recibe el mensaje de finalización, utiliza una barrera para esperar que todos los hilos reciban el mensaje de fin (`barrier.wait()`), indicando que todos los clientes terminaron, para poder enviar los ganadores.
+Para ir liberando recursos, antes de crear un hilo nuevo para un cliente verifica si alguno de los hilos activos ya finalizó, para poder liberar dicho recurso.
+Para evitar problemas de concurrencia como race conditions o deadlocks, requerí del uso de herramientas como locks. Este mecanismo es utilizado en:
 
 - Lock del archivo de apuestas: cada vez que se quiere almacenar o leer apuestas del archivo, el hilo debe asegurarse que ningún otro hilo está modificando dicho hilo. Para eso, toma el lock que le permite entrar a la sección crítica y ejecutar su operación (escribir o leer del archivo, según el caso). Una vez finalizado, libera el lock para que otro hilo pueda tomarlo.
-- Lock para realizar sorteo: desde el ejercicio 7 el servidor contaba con una variable `_clients_sending` que indicaba cuantos clientes seguían envíando apuestas, que era utilizado para verificar si ya todos habían terminado (`_clients_sending == 0`). Entonces, cada vez que un cliente terminaba de enviar sus apuestas restaba en uno a dicha variable y almacenaba el socket del cliente para poder luego enviarle los ganadores en un diccionario: `_clients_waiting_winners`. Ambas variables deben ser manejadas con una herramienta de concurrencia para evitar que distintos hilos las modifiquen al mismo tiempo. Para ello, utilizo un lock que segura que solo un hilo pueda realizar estas operaciones a la vez. A su vez, en dicha sección crítica también se realiza el chequeo para ver si todos los clientes han terminado y así mandarles los ganadores. 
+- Lock para los sockets: a medida que se conectan los clientes, almacenamos sus sockets para poder cerrarlos luego. En caso de que el flujo del programa vaya como esperado, se cerrará al finalizar (una vez envíado los gandores). Pero en caso de excepciones y para manejar el graceful shutdown, necesitaremos almacenar los sockets activos y luego con un lock, tomarlos y cerrarlos.
 
 Gracias a esta herramienta de concurrencia y el uso de hilos, se pudo realizar el manejo concurrente de clientes por parte del servidor.
 
-⚠️ Agrego el cierre de los sockets del cliente en el shutdown, debería haberse agregado en ramas anteriores.
+⚠️ Correcciones realizadas solo en la rama ej8
