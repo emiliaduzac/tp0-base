@@ -5,7 +5,7 @@ import threading
 
 from common.utils import store_bets, load_bets, has_won
 from common.lottery_protocol import ProtocolError, send_ack, send_nack, read_bets_from_socket, send_winners, read_n_bytes
-from common.protocol_utils import OpCodeReq, AGENCY_HEADER, END_LENGTH
+from common.protocol_utils import OpCodeReq, AGENCY_HEADER
 
 class Server:
     def __init__(self, port, listen_backlog, total_clients):
@@ -15,21 +15,17 @@ class Server:
         self._server_socket.listen(listen_backlog)
 
         # Winners related attributes
-        self._clients_sending = int(total_clients)
         self._barrier = threading.Barrier(int(total_clients))
 
         # Attribute to verify if server is running
         self._running = True
 
-        # Locks for thread safety -> bets file locks, finished clients counter lock, sockets lock
+        # Locks for thread safety -> bets file locks, sockets lock
         self._bets_file_lock = threading.Lock()
-        self._winners_lock = threading.Lock()
         self._socket_lock = threading.Lock()
 
-        # threads
-        self._cli_threads = []
-
-        # client sockets to close in case of shutdown
+        # threads and sockets
+        self._cli_threads = set()
         self._client_sockets = set() 
 
 
@@ -57,7 +53,7 @@ class Server:
                     # create a new thread to handle the client
                     t = threading.Thread(target=self.__handle_client_connection, args=(client_sock,))
                     t.start()
-                    self._cli_threads.append(t)
+                    self._cli_threads.add(t)
 
                 except socket.timeout:
                     # If timeout occurs, check again if server is still running
@@ -144,9 +140,6 @@ class Server:
         find the lottery winners and send them to each client. """
         agency = read_n_bytes(client_sock, AGENCY_HEADER)[0]
 
-        with self._winners_lock:
-            self._clients_sending -= 1
-
         self._barrier.wait()
 
         agency_winners = self.__get_agency_winners(agency)
@@ -168,6 +161,7 @@ class Server:
         for t in self._cli_threads:
             t.join()
             logging.debug("action: join_client_thread | result: success")
+        self._cli_threads.clear()
 
     
     def __check_finished_threads(self):
