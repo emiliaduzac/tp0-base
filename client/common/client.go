@@ -88,7 +88,7 @@ func (c *Client) StartClient() {
 	}
 	// Send end message to server
 	if err := c.sendEndMessage(); err != nil {
-		log.Errorf("action: send_end_message | result: fail | client_id: %v | error: %v")
+		log.Errorf("action: send_end_message | result: fail | client_id: %v | error: %v", c.config.ID, err)
 		return
 	}
 	if !c.validateStillAlive() {
@@ -114,7 +114,10 @@ func (c *Client) StartClient() {
 			return
 		}
 		if parseErr != nil {
-			log.Errorf("action: consulta_ganadores | result: fail | cant_ganadores: %d", cantWinners)
+			log.Errorf("action: consulta_ganadores | result: fail | client_id: %v | error: %v",
+				c.config.ID,
+				parseErr,
+			)
 			return
 		}
 		log.Infof("action: consulta_ganadores | result: success | cant_ganadores: %d", cantWinners)
@@ -214,14 +217,15 @@ func (c *Client) validateStillAlive() bool {
 }
 
 func (c *Client) closeResources(sigChan chan os.Signal) {
+	c.closeSocket()
 	signal.Stop(sigChan)
 	close(sigChan)
-	c.closeSocket()
 }
 
 // closes the client's connection if it's open
 func (c *Client) closeSocket() {
 	c.keepAliveMutex.Lock()
+	defer c.keepAliveMutex.Unlock() // Ensure mutex is unlocked even if error occurs
 	c.keepingAlive = false
 	if c.conn != nil {
 		if err := c.conn.Close(); err != nil {
@@ -232,5 +236,4 @@ func (c *Client) closeSocket() {
 		log.Debugf("action: close_socket | result: success | client_id: %v", c.config.ID)
 		c.conn = nil
 	}
-	c.keepAliveMutex.Unlock()
 }

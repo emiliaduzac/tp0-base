@@ -13,12 +13,25 @@ class Server:
         self._server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self._server_socket.bind(('', port))
         self._server_socket.listen(listen_backlog)
+
+        # Winners related attributes
         self._clients_sending = int(total_clients)
-        self._clients_waiting_winners = {}
+        self._barrier = threading.Barrier(int(total_clients))
+
+        # Attribute to verify if server is running
         self._running = True
+
+        # Locks for thread safety -> bets file locks, finished clients counter lock, sockets lock
         self._bets_file_lock = threading.Lock()
         self._winners_lock = threading.Lock()
+        self._socket_lock = threading.Lock()
+
+        # threads
         self._cli_threads = []
+
+        # client sockets to close in case of shutdown
+        self._client_sockets = set() 
+
 
     def run(self):
         """
@@ -33,12 +46,14 @@ class Server:
         signal.signal(signal.SIGINT, self.__handle_shutdown) # Interrupt from keyboard
 
         try:
-            self._server_socket.settimeout(1.0)
+            self._server_socket.settimeout(2.0)
             while self._running:
                 try:
                     client_sock = self.__accept_new_connection()
                     # verify if any thread has finished to join it and remove it from the list
                     self.__check_finished_threads()
+                    with self._socket_lock:
+                        self._client_sockets.add(client_sock)
                     # create a new thread to handle the client
                     t = threading.Thread(target=self.__handle_client_connection, args=(client_sock,))
                     t.start()
@@ -55,6 +70,20 @@ class Server:
         finally:
             self.__clean_resources()
 
+    
+    def __accept_new_connection(self):
+        """
+        Accept new connections
+
+        Function blocks until a connection to a client is made.
+        Then connection created is printed and returned
+        """
+        # Connection arrived
+        logging.info('action: accept_connections | result: in_progress')
+        c, addr = self._server_socket.accept()
+        logging.info(f'action: accept_connections | result: success | ip: {addr[0]}')
+        return c
+
             
     def __handle_client_connection(self, client_sock):
         """
@@ -63,9 +92,8 @@ class Server:
         If a problem arises in the communication with the client, the
         client socket will also be closed
         """
-        print("nuevo cliente")
         try:
-            while True:
+            while self._running:
                 try:
                     op_code = read_n_bytes(client_sock, 1)[0]
 
@@ -91,35 +119,12 @@ class Server:
                     break
         finally:
             try:
-                #client_sock.close() -> una vez que use barreras, puedo cerrar el socket aca
+                client_sock.close()
+                with self._socket_lock:
+                    self._client_sockets.remove(client_sock)
                 logging.debug("action: close_connection | result: success")
             except Exception as e:
                 logging.error(f"action: close_connection | result: fail | error: {e}")
-            
-
-    def __accept_new_connection(self):
-        """
-        Accept new connections
-
-        Function blocks until a connection to a client is made.
-        Then connection created is printed and returned
-        """
-        # Connection arrived
-        logging.info('action: accept_connections | result: in_progress')
-        c, addr = self._server_socket.accept()
-        logging.info(f'action: accept_connections | result: success | ip: {addr[0]}')
-        return c
-    
-
-    def __handle_shutdown(self, signum, frame):
-        """ Handle graceful shutdown of the server. """
-        logging.debug(f"action: shutdown | result: in_progress | signal: {signum}")
-        self._running = False
-        self._server_socket.close()
-        logging.debug("action: close_socket | result: success")  
-        self.__close_cli_sockets()
-        self.__join_threads()
-        logging.debug(f"action: shutdown | result: success | signal: {signum}")
 
 
     def __handle_batches(self, client_sock):
@@ -141,33 +146,23 @@ class Server:
 
         with self._winners_lock:
             self._clients_sending -= 1
-            self._clients_waiting_winners[agency] = client_sock
 
-            # TO DO: modificar
-            # - barreras
-            # - cada thread manda a su cliente
-            # Verify if all clients sent their bets to find the loterry winners
-            if self._clients_sending == 0:
-                all_winners = self.__get_winners()
-                logging.info("action: sorteo | result: success")
+        self._barrier.wait()
 
-                for act_agency, sock in self._clients_waiting_winners.items():
-                    winners = all_winners.get(int(act_agency), [])
-                    send_winners(sock, winners)
-                    sock.close()
-                    logging.debug(f"action: close_connection | result: success | agency: {act_agency}")
-                    self._running = False
+        agency_winners = self.__get_agency_winners(agency)
+        logging.info("action: sorteo | result: success")
+        send_winners(client_sock, agency_winners)
 
 
-    def __get_winners(self):
+    def __get_agency_winners(self, agency):
         """ Returns a dictionary with the winners of each agency. Takes a lock of the file while reading it. """
-        with self._bets_file_lock:
-            winners = {}
+        with self._bets_file_lock: # hace falta el lock si voy a leer solo las de mi agencia?
+            winners = []
             for bet in load_bets():
-                if has_won(bet):
-                    winners[bet.agency] = winners.get(bet.agency, []) + [bet.document]
+                if has_won(bet) and bet.agency == agency:
+                    winners.append(bet.document)
             return winners
-    
+
     
     def __join_threads(self):
         for t in self._cli_threads:
@@ -181,7 +176,6 @@ class Server:
         for t in self._cli_threads:
             if not t.is_alive():
                 t.join()
-                print("elimino un thread")
                 threads_to_remove.append(t)
                 logging.debug("action: join_client_thread | result: success")
 
@@ -190,12 +184,16 @@ class Server:
 
 
     def __close_cli_sockets(self):
-        for sock in self._clients_waiting_winners.values():
+        with self._socket_lock:
+            sockets = self._client_sockets.copy()
+            self._client_sockets.clear()
+
+        for sock in sockets:
             try:
                 sock.close()
+                logging.debug("action: close_client_socket | result: success")
             except Exception as e:
                 logging.error(f"action: close_client_socket | result: fail | error: {e}")
-        logging.debug("action: close_client_sockets | result: success")
         
 
     def __clean_resources(self):
@@ -204,6 +202,15 @@ class Server:
             self._server_socket.close()
             logging.debug("action: close_server_socket | result: success")  
             self.__join_threads()
+            self.__close_cli_sockets()
 
         except Exception as e:
             logging.error(f"action: close_resources | result: fail | error: {e}")
+
+    
+    def __handle_shutdown(self, signum, frame):
+        """ Handle graceful shutdown of the server. """
+        logging.debug(f"action: shutdown | result: in_progress | signal: {signum}")
+        self._running = False
+        self.__clean_resources()
+        logging.debug(f"action: shutdown | result: success | signal: {signum}")
