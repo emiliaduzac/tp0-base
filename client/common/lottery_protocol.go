@@ -92,30 +92,34 @@ func getBetFile(id string) (*os.File, error) {
 
 // Reads the server's response to find the winners of the lottery.
 func parseWinnersResponse(r *bufio.Reader) (int, error) {
+	// Read the total length of the winners response
 	totalLenBuf := make([]byte, WINNERS_HEADER)
 	if lenRead, err := io.ReadFull(r, totalLenBuf); err != nil || lenRead != WINNERS_HEADER {
 		err = verifyReadErr(err)
 		return 0, err
 	}
 
+	// Read the rest of the response based on the total length
 	totalLen := int(totalLenBuf[0])<<8 | int(totalLenBuf[1])
+	res := make([]byte, totalLen)
+	if bRead, err := io.ReadFull(r, res); err != nil || bRead != totalLen {
+		err = verifyReadErr(err)
+		return 0, err
+	}
 
 	totalWinners := 0
-	totalRead := 0
-	for totalRead < totalLen {
-		dniLenBuf := make([]byte, DNI_HEADER)
-		if lenLen, err := io.ReadFull(r, dniLenBuf); err != nil || lenLen != DNI_HEADER {
-			err = verifyReadErr(err)
-			return totalWinners, err
+	offset := 0
+	for offset < totalLen {
+		dniLen := int(res[offset])
+		offset++
+
+		if offset+dniLen > totalLen {
+			return totalWinners, &ProtocolError{"Wrong winners response length"}
 		}
 
-		dniBuf := make([]byte, int(dniLenBuf[0]))
-		if lenDni, err := io.ReadFull(r, dniBuf); err != nil || lenDni != int(dniLenBuf[0]) {
-			err = verifyReadErr(err)
-			return totalWinners, err
-		}
+		// not necessary to store the DNI, just count the winners
+		offset += dniLen
 		totalWinners++
-		totalRead += 1 + int(dniLenBuf[0])
 	}
 
 	return totalWinners, nil

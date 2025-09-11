@@ -68,31 +68,39 @@ func (c *Client) StartClient() {
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 	c.handle_signals(sigChan)
 
+	defer c.closeResources(sigChan)
+
 	// Create the connection to the server
-	r := c.createClientSocket()
-	if r != nil {
+	if err := c.createClientSocket(); err != nil {
 		log.Errorf("action: create_socket | result: fail | client_id: %v | error: %v",
 			c.config.ID,
-			r)
+			err)
 		return
 	}
-	defer c.closeSocket()
-
 	reader := bufio.NewReader(c.conn)
 
 	// Send all bets from file
-	c.sendBets(reader)
-	c.sendEndMessage()
+	if err := c.sendBets(reader); err != nil {
+		log.Errorf("action: send_bets | result: fail | client_id: %v | error: %v",
+			c.config.ID,
+			err)
+		return
+	}
+	// Send end message to server
+	if err := c.sendEndMessage(); err != nil {
+		log.Errorf("action: send_end_message | result: fail | client_id: %v | error: %v")
+		return
+	}
 	if !c.validateStillAlive() {
 		return
 	}
 
+	// Wait for server response
 	res, readErr := getResponseOpCode(reader)
 	if !c.validateStillAlive() {
 		return
 	}
 	if readErr != nil || res == byte(OC_NACK) {
-		log.Info("error en recibir ganadores")
 		log.Errorf("action: receive_message | result: fail | client_id: %v | error: %v",
 			c.config.ID,
 			readErr,
@@ -101,19 +109,16 @@ func (c *Client) StartClient() {
 	}
 
 	if res == byte(OC_WINNERS) {
-		reader := bufio.NewReader(reader)
 		cantWinners, parseErr := parseWinnersResponse(reader)
 		if !c.validateStillAlive() {
 			return
 		}
 		if parseErr != nil {
-			log.Infof("action: consulta_ganadores | result: fail | cant_ganadores: %d", cantWinners)
+			log.Errorf("action: consulta_ganadores | result: fail | cant_ganadores: %d", cantWinners)
+			return
 		}
 		log.Infof("action: consulta_ganadores | result: success | cant_ganadores: %d", cantWinners)
 	}
-
-	signal.Stop(sigChan)
-	close(sigChan)
 }
 
 func (c *Client) sendBets(connReader *bufio.Reader) error {
@@ -138,8 +143,11 @@ func (c *Client) sendBets(connReader *bufio.Reader) error {
 
 		// Send the batch to the server
 		sendErr := sendMessage(c.conn, batch)
-		if sendErr != nil || !c.validateStillAlive() {
-			break
+		if sendErr != nil {
+			return sendErr
+		}
+		if !c.validateStillAlive() {
+			return nil
 		}
 
 		// Wait for server response to ensure that the message was received and keep sending
@@ -148,7 +156,6 @@ func (c *Client) sendBets(connReader *bufio.Reader) error {
 			return nil
 		}
 		if readErr != nil {
-			log.Info("eerror en ack")
 			log.Errorf("action: receive_message | result: fail | client_id: %v | error: %v",
 				c.config.ID,
 				readErr,
@@ -163,10 +170,10 @@ func (c *Client) sendBets(connReader *bufio.Reader) error {
 
 		// If there was a bet that didn't fit in the batch, keep it for the next iteration
 		if lastBet != nil {
-			buffer = make([]byte, 0, max_payload_size)
-			buffer = append(buffer, lastBet...)
+			copy(buffer[:len(lastBet)], lastBet)
+			buffer = buffer[:len(lastBet)]
 		} else {
-			buffer = make([]byte, 0, max_payload_size)
+			buffer = buffer[:0]
 		}
 	}
 	return nil
@@ -201,11 +208,29 @@ func (c *Client) handle_signals(sigChan chan os.Signal) {
 
 func (c *Client) validateStillAlive() bool {
 	c.keepAliveMutex.RLock()
-	if !c.keepingAlive {
-		c.keepAliveMutex.RUnlock()
-		c.closeSocket()
-		return false
-	}
+	is_alive := c.keepingAlive
 	c.keepAliveMutex.RUnlock()
-	return true
+	return is_alive
+}
+
+func (c *Client) closeResources(sigChan chan os.Signal) {
+	signal.Stop(sigChan)
+	close(sigChan)
+	c.closeSocket()
+}
+
+// closes the client's connection if it's open
+func (c *Client) closeSocket() {
+	c.keepAliveMutex.Lock()
+	c.keepingAlive = false
+	if c.conn != nil {
+		if err := c.conn.Close(); err != nil {
+			log.Errorf("action: close_socket | result: fail | client_id: %v | error: %v",
+				c.config.ID,
+				err)
+		}
+		log.Debugf("action: close_socket | result: success | client_id: %v", c.config.ID)
+		c.conn = nil
+	}
+	c.keepAliveMutex.Unlock()
 }

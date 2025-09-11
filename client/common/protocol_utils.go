@@ -34,13 +34,6 @@ func (e *ProtocolError) Error() string {
 	return e.Message
 }
 
-// closes the client's connection if it's open
-func (c *Client) closeSocket() {
-	if c.conn != nil {
-		c.conn.Close()
-	}
-}
-
 // sends a message to the server, ensuring that all bytes are sent
 func sendMessage(conn net.Conn, betMsg []byte) error {
 	totalSent := 0
