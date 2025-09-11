@@ -149,12 +149,12 @@ class Server:
 
     def __get_agency_winners(self, agency):
         """ Returns a dictionary with the winners of each agency. Takes a lock of the file while reading it. """
-        with self._bets_file_lock: # hace falta el lock si voy a leer solo las de mi agencia?
-            winners = []
-            for bet in load_bets():
-                if has_won(bet) and bet.agency == agency:
-                    winners.append(bet.document)
-            return winners
+        # todos leen una vez que ya se mandaron todas las apuestas => no hay mas writes, todos reads == no hace falta lock
+        winners = []
+        for bet in load_bets():
+            if has_won(bet) and bet.agency == agency:
+                winners.append(bet.document)
+        return winners
 
     
     def __join_threads(self):
